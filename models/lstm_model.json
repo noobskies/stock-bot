@@ -1,0 +1,9 @@
+{
+  "sequence_length": 60,
+  "lstm_units_1": 64,
+  "lstm_units_2": 32,
+  "dropout_rate": 0.2,
+  "learning_rate": 0.001,
+  "feature_names": null,
+  "trained_at": "2025-11-13T13:18:20.179753"
+}
