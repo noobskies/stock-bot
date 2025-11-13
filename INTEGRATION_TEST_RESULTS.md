@@ -175,9 +175,105 @@ Performance Metrics:
 
 **Note**: Accuracy slightly below target likely due to PLTR's high volatility. Model is functional and suitable for integration testing. May need retraining with more data or hyperparameter tuning for production use.
 
+### Test 8: Ensemble Prediction Generation ⚠️
+
+**Status**: BLOCKED BY BUG ⚠️
+
+**Test Created**: test_ensemble_prediction.py (310 lines)
+
+**Successful Steps** (1-5 of 8):
+
+1. ✅ **Configuration Loading**
+
+   - Loaded hybrid mode, PLTR symbol
+   - Model path: models/lstm_model.h5
+   - Weights: LSTM=0.5, RF=0.3, Momentum=0.2
+
+2. ✅ **Data Pipeline Initialization**
+
+   - Alpaca API connected successfully
+   - FeatureEngineer initialized
+
+3. ✅ **Historical Data Fetching**
+
+   - Fetched 250 days of PLTR data (2024-11-13 to 2025-11-13)
+   - Recent close prices: $190.96 → $184.17 → $172.82
+
+4. ✅ **Technical Indicators Calculation**
+
+   - Calculated 22 technical indicators successfully
+   - Recent RSI: 53.78 → 49.26 → 42.79 (downtrend)
+   - Recent MACD: 2.78 → 2.24 → 0.88 (weakening)
+   - SMA_20: $186.78, SMA_50: $179.15
+
+5. ✅ **Ensemble Predictor Initialization**
+   - LSTM model loaded from models/lstm_model.h5 (0.43 MB)
+   - Random Forest not found (expected - not yet trained)
+   - Ensemble weights configured correctly
+
+**Failed Step** (6 of 8):
+
+6. ❌ **Prediction Generation - BLOCKED BY BUG**
+
+**Critical Bug Discovered**:
+
+- **Error**: `ModelPrediction.__init__() got an unexpected keyword argument 'probability'`
+- **Location**: src/ml/ensemble.py line 191
+- **Root Cause**: Type mismatch between ensemble.py and trading_types.py
+
+**Bug Details**:
+
+```python
+# WRONG (current code in ensemble.py):
+prediction = ModelPrediction(
+    symbol=symbol,
+    timestamp=datetime.now(),
+    direction=direction,
+    probability=ensemble_probability,  # ❌ Field doesn't exist
+    confidence=confidence,
+    model_name="Ensemble",
+    features_used=["LSTM", "RandomForest", "Momentum"]
+)
+
+# CORRECT (required fix):
+current_price = df.iloc[-1]['close']
+predicted_price = current_price * (1.01 if direction == "UP" else 0.99)
+
+prediction = ModelPrediction(
+    symbol=symbol,
+    predicted_price=predicted_price,  # ✅ Correct field
+    direction=direction,
+    confidence=confidence,
+    features_used=["LSTM", "RandomForest", "Momentum"],
+    timestamp=datetime.now(),
+    model_name="Ensemble",
+    metadata={'probability': ensemble_probability}  # Store as metadata
+)
+```
+
+**Impact**:
+
+- **Severity**: HIGH
+- **Blocks**: Tests 8, 9, 10 (prediction, signal generation, risk validation)
+- **Affected**: All code using EnsemblePredictor class
+- **Status**: ACTIVE - Must be fixed before proceeding
+
+**Additional Findings**:
+
+1. LSTM model loader has array shape issue (secondary bug)
+2. Momentum signal calculation working (returns neutral 0.5 signal)
+3. Weight normalization working (redistributes when models fail)
+
+**Resolution Required**:
+
+1. Fix ModelPrediction instantiation in ensemble.py
+2. Add predicted_price calculation logic based on current price and direction
+3. Move probability to metadata field
+4. Re-run test to verify ensemble predictions work
+
 ### Next Steps: Remaining Integration Tests
 
-**Test 8**: Ensemble Prediction Generation
+**Test 8**: Ensemble Prediction Generation (MUST FIX BUG FIRST)
 
 - Fetch historical data for PLTR
 - Calculate technical indicators

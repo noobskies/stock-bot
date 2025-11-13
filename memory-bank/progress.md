@@ -548,15 +548,15 @@
 - [ ] Verify dashboard displays correctly (deferred to Phase 9)
 - [ ] Test signal approval workflow (deferred to Phase 9)
 
-### Phase 9: Integration & Testing (Days 16-17) - 50% Complete 🔄
+### Phase 9: Integration & Testing (Days 16-17) - 50% Complete 🔄 (BLOCKED)
 
-**Integration Testing** 🔄
+**Integration Testing** 🔄 ⚠️ BLOCKED
 
 - [x] Test 1-4: Bot Initialization - PASSED ✅ (9 bugs found and fixed)
 - [x] Test 5: Dashboard Launch - PASSED ✅
 - [x] Test 6: Data Pipeline - PASSED ✅ (501 days PLTR, 20 indicators, 392 sequences)
 - [x] Test 7: ML Model Training - PASSED ✅ (59.49% accuracy, 11 epochs, 0.43 MB model)
-- [ ] Test 8: Prediction Generation (ensemble predictions)
+- [ ] Test 8: Prediction Generation - **BLOCKED BY BUG** ⚠️ (Steps 1-5 passed, Step 6 failed)
 - [ ] Test 9: Signal Generation (confidence filtering, mode logic)
 - [ ] Test 10: Risk Validation (position sizing, trade validation)
 - [ ] Test 11: Signal Approval Workflow (manual approval via dashboard)
@@ -615,7 +615,20 @@
 
 ### Critical Issues
 
-**None** - All critical blockers resolved ✅
+**Critical Bug in ensemble.py** ⚠️ BLOCKING Test 8 (Discovered Session 6 - November 13, 2025)
+
+- **Severity**: HIGH - Blocks all ensemble prediction functionality
+- **Location**: src/ml/ensemble.py line ~191
+- **Issue**: Code tries to instantiate `ModelPrediction` with `probability` field, but dataclass only accepts `predicted_price`
+- **Error**: `ModelPrediction.__init__() got an unexpected keyword argument 'probability'`
+- **Impact**: Cannot generate ensemble predictions, blocks Tests 8, 9, 10
+- **Affected Components**: All code using EnsemblePredictor
+- **Status**: ACTIVE - Needs immediate fix
+- **Required Action**:
+  1. Fix ModelPrediction instantiation in ensemble.py
+  2. Add predicted_price calculation logic
+  3. Store probability in metadata field instead
+  4. Re-run Test 8 to verify fix
 
 ### Previously Resolved
 
@@ -628,6 +641,19 @@
 - **Status**: RESOLVED - Bot is now functional
 
 ## Recent Additions
+
+### November 13, 2025 - Session 6 (Integration Testing - Test 8 BLOCKED)
+
+**Phase 9: Test 8 - CRITICAL BUG DISCOVERED** ⚠️
+
+- Test 8 created: test_ensemble_prediction.py (310 lines)
+- Steps 1-5 PASSED: Config, data pipeline, indicators, model loading
+- Step 6 FAILED: Prediction generation blocked by type mismatch bug
+- **Bug**: ensemble.py uses wrong field name in ModelPrediction instantiation
+- Integration testing now at 50% (7 of 14 tests complete)
+- Test 8 must be unblocked before proceeding with Tests 9-14
+
+**Git Status**: No commits yet - bug must be fixed first
 
 ### November 13, 2025 - Session 6 (Integration Testing - Tests 6 & 7)
 

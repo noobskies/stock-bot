@@ -44,6 +44,108 @@
 
 ## Recent Changes
 
+### Phase 9: Integration Testing - Test 8 BLOCKED BY BUG (Session 6 - November 13, 2025)
+
+**CRITICAL**: Bug discovered in ensemble.py prevents Test 8 completion ⚠️
+
+**Test Results Summary**:
+
+- ✅ Test 8: Steps 1-5 PASSED (Initialization, data pipeline, model loading)
+- ❌ Test 8: Step 6 FAILED (Prediction generation blocked by bug)
+- ⚠️ **BUG DISCOVERED**: Critical type mismatch in ensemble.py
+
+**Test 8: Ensemble Prediction Generation** (test_ensemble_prediction.py created - 310 lines):
+
+**Successful Steps**:
+
+1. ✅ Configuration loading (hybrid mode, PLTR, weights: LSTM=0.5, RF=0.3, Momentum=0.2)
+2. ✅ Data pipeline initialized (Alpaca API connected)
+3. ✅ Fetched 250 days of PLTR historical data
+4. ✅ Calculated 22 technical indicators successfully
+5. ✅ Ensemble predictor initialized, LSTM model loaded from models/lstm_model.h5
+
+**Failure at Step 6**:
+
+- ERROR: `ModelPrediction.__init__() got an unexpected keyword argument 'probability'`
+- Location: src/ml/ensemble.py line 191
+- Impact: Cannot generate any ensemble predictions
+
+**Critical Bug Details**:
+
+**Root Cause**: Type mismatch between ensemble.py implementation and ModelPrediction dataclass
+
+- **ensemble.py** tries to instantiate ModelPrediction with `probability` field
+- **trading_types.py** ModelPrediction dataclass only accepts `predicted_price` field
+- This is a fundamental design bug in the ensemble module
+
+**Bug Location**:
+
+```python
+# File: src/ml/ensemble.py, line ~191
+prediction = ModelPrediction(
+    symbol=symbol,
+    timestamp=datetime.now(),
+    direction=direction,
+    probability=ensemble_probability,  # ❌ WRONG - field doesn't exist
+    confidence=confidence,
+    model_name="Ensemble",
+    features_used=["LSTM", "RandomForest", "Momentum"]
+)
+```
+
+**Required Fix**:
+
+```python
+# Need to add predicted_price calculation based on current price and direction
+current_price = df.iloc[-1]['close']
+predicted_price = current_price * (1.01 if direction == "UP" else 0.99)  # Example
+
+prediction = ModelPrediction(
+    symbol=symbol,
+    predicted_price=predicted_price,  # ✅ CORRECT field name
+    direction=direction,
+    confidence=confidence,
+    features_used=["LSTM", "RandomForest", "Momentum"],
+    timestamp=datetime.now(),
+    model_name="Ensemble",
+    metadata={'probability': ensemble_probability}  # Store as metadata
+)
+```
+
+**Impact Assessment**:
+
+- **Severity**: HIGH - Blocks all ensemble prediction functionality
+- **Affected**: All components that use EnsemblePredictor
+- **Workaround**: None - must be fixed before proceeding
+- **Tests Blocked**: Tests 8, 9, 10 (signal generation, risk validation)
+
+**Additional Findings**:
+
+1. LSTM model loader has array shape issue (secondary bug discovered during test)
+2. Random Forest model not found (expected - not yet trained)
+3. Momentum signal calculation working correctly (returns 0.5 neutral signal)
+
+**Files Created**:
+
+- test_ensemble_prediction.py (310 lines) - Comprehensive test with 7 validation checks
+- Test output logged showing exact error trace
+
+**Git Status**: No commits yet - bug must be fixed first
+
+**Current State**:
+
+- Integration testing at 50% (7 of 14 tests complete)
+- Tests 1-7: PASSED ✅
+- Test 8: BLOCKED by bug ⚠️
+- Tests 9-14: Pending
+
+**Next Immediate Steps**:
+
+1. **MUST FIX**: Correct ModelPrediction instantiation in ensemble.py
+2. Add predicted_price calculation logic
+3. Re-run Test 8 to verify fix
+4. Continue with Tests 9-14
+
 ### Phase 9: Integration Testing - Tests 6 & 7 Complete (Session 6 - November 13, 2025)
 
 **MILESTONE**: Data Pipeline & ML Model Training Verified ✅
