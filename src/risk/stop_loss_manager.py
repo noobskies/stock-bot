@@ -15,7 +15,7 @@ from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from loguru import logger
 
-from ..types.trading_types import (
+from src.types.trading_types import (
     Position,
     BotConfig,
     PositionStatus

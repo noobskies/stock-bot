@@ -13,9 +13,9 @@ Key Components:
 - StopLossManager: Automated stop loss execution
 """
 
-from .risk_calculator import RiskCalculator
-from .portfolio_monitor import PortfolioMonitor, PortfolioState
-from .stop_loss_manager import StopLossManager
+from src.risk.risk_calculator import RiskCalculator
+from src.risk.portfolio_monitor import PortfolioMonitor, PortfolioState
+from src.risk.stop_loss_manager import StopLossManager
 
 __all__ = [
     'RiskCalculator',

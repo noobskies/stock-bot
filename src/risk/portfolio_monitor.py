@@ -11,7 +11,7 @@ from dataclasses import dataclass
 import numpy as np
 from loguru import logger
 
-from ..types.trading_types import (
+from src.types.trading_types import (
     Position,
     RiskMetrics,
     PerformanceMetrics,
