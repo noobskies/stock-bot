@@ -1,0 +1,543 @@
+{% extends "base.html" %} {% block title %}Dashboard - AI Trading Bot{% endblock
+%} {% block content %}
+<div class="dashboard">
+  <!-- Header with Bot Controls -->
+  <div class="dashboard-header">
+    <div class="header-left">
+      <h2>Portfolio Dashboard</h2>
+      <p class="header-subtitle">Real-time monitoring and control</p>
+    </div>
+    <div class="header-right">
+      <div class="mode-selector">
+        <label>Trading Mode:</label>
+        <select id="tradingMode" class="mode-select">
+          <option value="auto">Auto</option>
+          <option value="manual">Manual</option>
+          <option value="hybrid" selected>Hybrid</option>
+        </select>
+      </div>
+      <button id="startBtn" class="btn btn-success">Start Bot</button>
+      <button id="stopBtn" class="btn btn-danger" style="display: none">
+        Stop Bot
+      </button>
+      <button id="emergencyStopBtn" class="btn btn-emergency">
+        Emergency Stop
+      </button>
+    </div>
+  </div>
+
+  <!-- Portfolio Summary Cards -->
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-header">
+        <h3>Portfolio Value</h3>
+        <span class="card-icon">💰</span>
+      </div>
+      <div class="card-body">
+        <div class="card-value" id="portfolioValue">$0.00</div>
+        <div class="card-change" id="portfolioChange">+$0.00 (0.00%)</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Cash Available</h3>
+        <span class="card-icon">💵</span>
+      </div>
+      <div class="card-body">
+        <div class="card-value" id="cashAvailable">$0.00</div>
+        <div class="card-subtitle">
+          Buying Power: <span id="buyingPower">$0.00</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Active Positions</h3>
+        <span class="card-icon">📊</span>
+      </div>
+      <div class="card-body">
+        <div class="card-value" id="positionCount">0</div>
+        <div class="card-subtitle">Max: <span>5</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Daily P&L</h3>
+        <span class="card-icon">📈</span>
+      </div>
+      <div class="card-body">
+        <div class="card-value" id="dailyPnl">$0.00</div>
+        <div class="card-change" id="dailyPnlPercent">0.00%</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Risk Metrics -->
+  <div class="section">
+    <div class="section-header">
+      <h3>Risk Metrics</h3>
+    </div>
+    <div class="risk-metrics">
+      <div class="metric">
+        <div class="metric-label">Portfolio Exposure</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="exposureBar" style="width: 0%"></div>
+        </div>
+        <div class="metric-value"><span id="exposureValue">0%</span> / 20%</div>
+      </div>
+      <div class="metric">
+        <div class="metric-label">Daily Loss Limit</div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="lossLimitBar" style="width: 0%"></div>
+        </div>
+        <div class="metric-value"><span id="lossLimitValue">0%</span> / 5%</div>
+      </div>
+      <div class="circuit-breaker" id="circuitBreaker" style="display: none">
+        <span class="warning-icon">⚠️</span>
+        <strong>Circuit Breaker Active</strong> - Daily loss limit exceeded
+      </div>
+    </div>
+  </div>
+
+  <!-- Active Positions -->
+  <div class="section">
+    <div class="section-header">
+      <h3>Active Positions</h3>
+      <button class="btn btn-sm" onclick="refreshPositions()">Refresh</button>
+    </div>
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Quantity</th>
+            <th>Entry Price</th>
+            <th>Current Price</th>
+            <th>P&L</th>
+            <th>P&L %</th>
+            <th>Stop Loss</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="positionsTable">
+          <tr>
+            <td colspan="8" class="no-data">No active positions</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Pending Signals -->
+  <div class="section">
+    <div class="section-header">
+      <h3>Pending Signals</h3>
+      <span class="badge" id="pendingCount">0</span>
+    </div>
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Type</th>
+            <th>Confidence</th>
+            <th>Predicted Price</th>
+            <th>Current Price</th>
+            <th>Quantity</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="pendingSignalsTable">
+          <tr>
+            <td colspan="7" class="no-data">No pending signals</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Performance Metrics -->
+  <div class="cards-grid">
+    <div class="card">
+      <div class="card-header">
+        <h3>Win Rate</h3>
+      </div>
+      <div class="card-body">
+        <div class="card-value" id="winRate">0%</div>
+        <div class="card-subtitle"><span id="totalTrades">0</span> trades</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Profit Factor</h3>
+      </div>
+      <div class="card-body">
+        <div class="card-value" id="profitFactor">0.00</div>
+        <div class="card-subtitle">Profit / Loss ratio</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Sharpe Ratio</h3>
+      </div>
+      <div class="card-body">
+        <div class="card-value" id="sharpeRatio">0.00</div>
+        <div class="card-subtitle">Risk-adjusted returns</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <h3>Max Drawdown</h3>
+      </div>
+      <div class="card-body">
+        <div class="card-value" id="maxDrawdown">0.00%</div>
+        <div class="card-subtitle">Peak to trough</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  // Dashboard-specific JavaScript
+  let refreshInterval;
+
+  // Initialize dashboard on page load
+  document.addEventListener("DOMContentLoaded", function () {
+    loadDashboard();
+    startAutoRefresh();
+    setupEventListeners();
+  });
+
+  function setupEventListeners() {
+    // Bot control buttons
+    document.getElementById("startBtn").addEventListener("click", startBot);
+    document.getElementById("stopBtn").addEventListener("click", stopBot);
+    document
+      .getElementById("emergencyStopBtn")
+      .addEventListener("click", emergencyStop);
+
+    // Trading mode selector
+    document
+      .getElementById("tradingMode")
+      .addEventListener("change", changeTradingMode);
+  }
+
+  async function loadDashboard() {
+    await Promise.all([
+      loadPortfolio(),
+      loadPendingSignals(),
+      updateBotStatus(),
+    ]);
+  }
+
+  async function loadPortfolio() {
+    try {
+      const response = await fetch("/api/portfolio");
+      const data = await response.json();
+
+      if (data.error) {
+        showToast(data.error, "error");
+        return;
+      }
+
+      // Update portfolio values
+      document.getElementById("portfolioValue").textContent = formatCurrency(
+        data.portfolio.total_value
+      );
+      document.getElementById("cashAvailable").textContent = formatCurrency(
+        data.portfolio.cash
+      );
+      document.getElementById("buyingPower").textContent = formatCurrency(
+        data.portfolio.buying_power
+      );
+
+      // Update daily P&L
+      const dailyPnl = data.portfolio.daily_pnl;
+      const dailyPnlPercent = data.portfolio.daily_pnl_percent;
+      document.getElementById("dailyPnl").textContent =
+        formatCurrency(dailyPnl);
+      document.getElementById("dailyPnlPercent").textContent =
+        formatPercentage(dailyPnlPercent);
+      document.getElementById("dailyPnlPercent").className =
+        "card-change " + (dailyPnl >= 0 ? "positive" : "negative");
+
+      // Update position count
+      document.getElementById("positionCount").textContent =
+        data.risk.position_count;
+
+      // Update risk metrics
+      const exposure = data.risk.total_exposure;
+      document.getElementById("exposureValue").textContent =
+        formatPercentage(exposure);
+      document.getElementById("exposureBar").style.width =
+        (exposure / 20) * 100 + "%";
+
+      const lossPercent = Math.abs(Math.min(0, dailyPnlPercent));
+      document.getElementById("lossLimitValue").textContent =
+        formatPercentage(lossPercent);
+      document.getElementById("lossLimitBar").style.width =
+        (lossPercent / 5) * 100 + "%";
+
+      // Show circuit breaker if active
+      if (data.risk.circuit_breaker_active) {
+        document.getElementById("circuitBreaker").style.display = "flex";
+      }
+
+      // Update positions table
+      updatePositionsTable(data.positions);
+
+      // Update performance metrics
+      document.getElementById("winRate").textContent = formatPercentage(
+        data.performance.win_rate
+      );
+      document.getElementById("totalTrades").textContent =
+        data.performance.total_trades;
+      document.getElementById("profitFactor").textContent =
+        data.performance.profit_factor.toFixed(2);
+      document.getElementById("sharpeRatio").textContent =
+        data.performance.sharpe_ratio.toFixed(2);
+      document.getElementById("maxDrawdown").textContent = formatPercentage(
+        data.performance.max_drawdown
+      );
+    } catch (error) {
+      console.error("Error loading portfolio:", error);
+      showToast("Failed to load portfolio data", "error");
+    }
+  }
+
+  function updatePositionsTable(positions) {
+    const tbody = document.getElementById("positionsTable");
+
+    if (!positions || positions.length === 0) {
+      tbody.innerHTML =
+        '<tr><td colspan="8" class="no-data">No active positions</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = positions
+      .map(
+        (pos) => `
+        <tr>
+            <td><strong>${pos.symbol}</strong></td>
+            <td>${pos.quantity}</td>
+            <td>${formatCurrency(pos.entry_price)}</td>
+            <td>${formatCurrency(pos.current_price)}</td>
+            <td class="${pos.unrealized_pnl >= 0 ? "positive" : "negative"}">
+                ${formatCurrency(pos.unrealized_pnl)}
+            </td>
+            <td class="${
+              pos.unrealized_pnl_percent >= 0 ? "positive" : "negative"
+            }">
+                ${formatPercentage(pos.unrealized_pnl_percent)}
+            </td>
+            <td>${
+              pos.trailing_stop
+                ? formatCurrency(pos.trailing_stop)
+                : formatCurrency(pos.stop_loss)
+            }</td>
+            <td>
+                <button class="btn btn-sm btn-danger" onclick="closePosition('${
+                  pos.symbol
+                }')">Close</button>
+            </td>
+        </tr>
+    `
+      )
+      .join("");
+  }
+
+  async function loadPendingSignals() {
+    try {
+      const response = await fetch("/api/signals/pending");
+      const data = await response.json();
+
+      if (data.error) {
+        return;
+      }
+
+      const signals = data.signals || [];
+      document.getElementById("pendingCount").textContent = signals.length;
+
+      const tbody = document.getElementById("pendingSignalsTable");
+
+      if (signals.length === 0) {
+        tbody.innerHTML =
+          '<tr><td colspan="7" class="no-data">No pending signals</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = signals
+        .map(
+          (signal) => `
+            <tr>
+                <td><strong>${signal.symbol}</strong></td>
+                <td><span class="badge badge-${signal.signal_type.toLowerCase()}">${
+            signal.signal_type
+          }</span></td>
+                <td>${formatPercentage(signal.confidence * 100)}</td>
+                <td>${formatCurrency(signal.predicted_price)}</td>
+                <td>${formatCurrency(signal.current_price)}</td>
+                <td>${signal.suggested_quantity}</td>
+                <td>
+                    <button class="btn btn-sm btn-success" onclick="approveSignal(${
+                      signal.id
+                    })">Approve</button>
+                    <button class="btn btn-sm btn-danger" onclick="rejectSignal(${
+                      signal.id
+                    })">Reject</button>
+                </td>
+            </tr>
+        `
+        )
+        .join("");
+    } catch (error) {
+      console.error("Error loading pending signals:", error);
+    }
+  }
+
+  async function approveSignal(signalId) {
+    try {
+      const response = await fetch(`/api/signals/${signalId}/approve`, {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showToast("Signal approved", "success");
+        loadDashboard();
+      } else {
+        showToast(data.error || "Failed to approve signal", "error");
+      }
+    } catch (error) {
+      showToast("Error approving signal", "error");
+    }
+  }
+
+  async function rejectSignal(signalId) {
+    try {
+      const response = await fetch(`/api/signals/${signalId}/reject`, {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showToast("Signal rejected", "info");
+        loadDashboard();
+      } else {
+        showToast(data.error || "Failed to reject signal", "error");
+      }
+    } catch (error) {
+      showToast("Error rejecting signal", "error");
+    }
+  }
+
+  async function startBot() {
+    try {
+      const response = await fetch("/api/bot/start", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showToast("Bot started successfully", "success");
+        updateBotStatus();
+      } else {
+        showToast(data.error || "Failed to start bot", "error");
+      }
+    } catch (error) {
+      showToast("Error starting bot", "error");
+    }
+  }
+
+  async function stopBot() {
+    try {
+      const response = await fetch("/api/bot/stop", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showToast("Bot stopped", "info");
+        updateBotStatus();
+      } else {
+        showToast(data.error || "Failed to stop bot", "error");
+      }
+    } catch (error) {
+      showToast("Error stopping bot", "error");
+    }
+  }
+
+  async function emergencyStop() {
+    if (
+      !confirm(
+        "Emergency stop will halt all trading and close all positions. Continue?"
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/bot/emergency-stop", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showToast(data.message, "warning");
+        updateBotStatus();
+        loadDashboard();
+      } else {
+        showToast(data.error || "Emergency stop failed", "error");
+      }
+    } catch (error) {
+      showToast("Error during emergency stop", "error");
+    }
+  }
+
+  async function changeTradingMode() {
+    const mode = document.getElementById("tradingMode").value;
+
+    try {
+      const response = await fetch("/api/bot/mode", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ mode }),
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showToast(`Trading mode changed to ${mode}`, "success");
+      } else {
+        showToast(data.error || "Failed to change mode", "error");
+      }
+    } catch (error) {
+      showToast("Error changing trading mode", "error");
+    }
+  }
+
+  function refreshPositions() {
+    loadPortfolio();
+    showToast("Positions refreshed", "info");
+  }
+
+  function startAutoRefresh() {
+    // Refresh dashboard every 30 seconds
+    refreshInterval = setInterval(loadDashboard, 30000);
+  }
+
+  // Clean up on page unload
+  window.addEventListener("beforeunload", function () {
+    if (refreshInterval) {
+      clearInterval(refreshInterval);
+    }
+  });
+</script>
+{% endblock %}

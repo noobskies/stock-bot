@@ -1,0 +1,109 @@
+{% extends "base.html" %} {% block title %}Trade History - AI Trading Bot{%
+endblock %} {% block content %}
+<div class="trades-page">
+  <div class="page-header">
+    <h2>Trade History</h2>
+    <p class="page-subtitle">View and analyze trading performance</p>
+  </div>
+
+  <!-- Filters -->
+  <div class="filters">
+    <select id="symbolFilter" class="filter-select">
+      <option value="">All Symbols</option>
+      <option value="PLTR">PLTR</option>
+    </select>
+    <select id="statusFilter" class="filter-select">
+      <option value="">All Status</option>
+      <option value="open">Open</option>
+      <option value="closed">Closed</option>
+    </select>
+    <select id="daysFilter" class="filter-select">
+      <option value="7">Last 7 Days</option>
+      <option value="30" selected>Last 30 Days</option>
+      <option value="90">Last 90 Days</option>
+    </select>
+    <button class="btn btn-primary" onclick="loadTrades()">
+      Apply Filters
+    </button>
+  </div>
+
+  <!-- Trades Table -->
+  <div class="table-container">
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Symbol</th>
+          <th>Action</th>
+          <th>Quantity</th>
+          <th>Entry Price</th>
+          <th>Exit Price</th>
+          <th>P&L</th>
+          <th>P&L %</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="tradesTable">
+        <tr>
+          <td colspan="9" class="no-data">Loading...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", loadTrades);
+
+  async function loadTrades() {
+    const symbol = document.getElementById("symbolFilter").value;
+    const status = document.getElementById("statusFilter").value;
+    const days = document.getElementById("daysFilter").value;
+
+    try {
+      const params = new URLSearchParams({ days });
+      if (symbol) params.append("symbol", symbol);
+      if (status) params.append("status", status);
+
+      const response = await fetch(`/api/trades/history?${params}`);
+      const data = await response.json();
+
+      const tbody = document.getElementById("tradesTable");
+
+      if (!data.trades || data.trades.length === 0) {
+        tbody.innerHTML =
+          '<tr><td colspan="9" class="no-data">No trades found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.trades
+        .map(
+          (trade) => `
+            <tr>
+                <td>${new Date(trade.entry_time).toLocaleDateString()}</td>
+                <td><strong>${trade.symbol}</strong></td>
+                <td><span class="badge badge-${trade.action.toLowerCase()}">${
+            trade.action
+          }</span></td>
+                <td>${trade.quantity}</td>
+                <td>${formatCurrency(trade.entry_price)}</td>
+                <td>${
+                  trade.exit_price ? formatCurrency(trade.exit_price) : "-"
+                }</td>
+                <td class="${
+                  trade.pnl >= 0 ? "positive" : "negative"
+                }">${formatCurrency(trade.pnl)}</td>
+                <td class="${
+                  trade.pnl_percent >= 0 ? "positive" : "negative"
+                }">${formatPercentage(trade.pnl_percent)}</td>
+                <td><span class="badge">${trade.status}</span></td>
+            </tr>
+        `
+        )
+        .join("");
+    } catch (error) {
+      showToast("Error loading trades", "error");
+    }
+  }
+</script>
+{% endblock %}

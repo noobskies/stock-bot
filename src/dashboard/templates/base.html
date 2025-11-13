@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{% block title %}AI Trading Bot Dashboard{% endblock %}</title>
+    <link
+      rel="stylesheet"
+      href="{{ url_for('static', filename='css/style.css') }}"
+    />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar">
+      <div class="nav-container">
+        <div class="nav-brand">
+          <h1>📈 Trading Bot</h1>
+        </div>
+        <ul class="nav-menu">
+          <li>
+            <a
+              href="/"
+              class="nav-link {% if request.path == '/' %}active{% endif %}"
+              >Dashboard</a
+            >
+          </li>
+          <li>
+            <a
+              href="/trades"
+              class="nav-link {% if request.path == '/trades' %}active{% endif %}"
+              >Trades</a
+            >
+          </li>
+          <li>
+            <a
+              href="/signals"
+              class="nav-link {% if request.path == '/signals' %}active{% endif %}"
+              >Signals</a
+            >
+          </li>
+          <li>
+            <a
+              href="/settings"
+              class="nav-link {% if request.path == '/settings' %}active{% endif %}"
+              >Settings</a
+            >
+          </li>
+        </ul>
+        <div class="nav-status">
+          <span class="status-indicator" id="botStatus">
+            <span class="status-dot"></span>
+            <span class="status-text">Loading...</span>
+          </span>
+        </div>
+      </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <div class="container">{% block content %}{% endblock %}</div>
+    </main>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <p>&copy; 2025 AI Trading Bot. Paper Trading Mode.</p>
+      </div>
+    </footer>
+
+    <!-- Toast Notifications -->
+    <div id="toastContainer" class="toast-container"></div>
+
+    <!-- Base JavaScript -->
+    <script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+    {% block scripts %}{% endblock %}
+  </body>
+</html>

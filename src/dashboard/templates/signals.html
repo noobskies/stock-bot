@@ -1,0 +1,81 @@
+{% extends "base.html" %} {% block title %}Signals - AI Trading Bot{% endblock
+%} {% block content %}
+<div class="signals-page">
+  <div class="page-header">
+    <h2>Trading Signals</h2>
+    <p class="page-subtitle">Review and manage trading signals</p>
+  </div>
+
+  <!-- Signal History -->
+  <div class="section">
+    <div class="section-header">
+      <h3>Signal History</h3>
+      <select id="daysFilter" class="filter-select" onchange="loadSignals()">
+        <option value="7" selected>Last 7 Days</option>
+        <option value="30">Last 30 Days</option>
+      </select>
+    </div>
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Symbol</th>
+            <th>Type</th>
+            <th>Confidence</th>
+            <th>Predicted Price</th>
+            <th>Current Price</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="signalsTable">
+          <tr>
+            <td colspan="7" class="no-data">Loading...</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %} {% block scripts %}
+<script>
+  document.addEventListener("DOMContentLoaded", loadSignals);
+
+  async function loadSignals() {
+    const days = document.getElementById("daysFilter").value;
+
+    try {
+      const response = await fetch(`/api/signals/history?days=${days}`);
+      const data = await response.json();
+
+      const tbody = document.getElementById("signalsTable");
+
+      if (!data.signals || data.signals.length === 0) {
+        tbody.innerHTML =
+          '<tr><td colspan="7" class="no-data">No signals found</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.signals
+        .map(
+          (signal) => `
+            <tr>
+                <td>${new Date(signal.timestamp).toLocaleDateString()}</td>
+                <td><strong>${signal.symbol}</strong></td>
+                <td><span class="badge badge-${signal.signal_type.toLowerCase()}">${
+            signal.signal_type
+          }</span></td>
+                <td>${formatPercentage(signal.confidence * 100)}</td>
+                <td>${formatCurrency(signal.predicted_price)}</td>
+                <td>${formatCurrency(signal.current_price)}</td>
+                <td><span class="badge">${signal.status}</span></td>
+            </tr>
+        `
+        )
+        .join("");
+    } catch (error) {
+      showToast("Error loading signals", "error");
+    }
+  }
+</script>
+{% endblock %}
