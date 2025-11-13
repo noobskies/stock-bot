@@ -123,15 +123,31 @@ class LSTMPredictor:
         # More extreme probabilities = higher confidence
         confidence = abs(probability - 0.5) * 2.0  # Scale to [0, 1]
         
+        # Calculate predicted price based on probability
+        current_price = df.iloc[-1]['close']
+        # Use probability to estimate price movement magnitude
+        if direction == "UP":
+            # For UP direction, use probability above 0.5 to scale the move
+            move_percent = (probability - 0.5) * 0.04  # 0.5-1.0 -> 0-2%
+            predicted_price = current_price * (1 + move_percent)
+        else:
+            # For DOWN direction, use probability below 0.5 to scale the move
+            move_percent = (0.5 - probability) * 0.04  # 0.5-0.0 -> 0-2%
+            predicted_price = current_price * (1 - move_percent)
+        
         # Create prediction object
         prediction = ModelPrediction(
             symbol=symbol,
-            timestamp=datetime.now(),
+            predicted_price=predicted_price,
             direction=direction,
-            probability=probability,
             confidence=confidence,
+            features_used=self.feature_names or list(features_df.columns),
+            timestamp=datetime.now(),
             model_name="LSTM",
-            features_used=self.feature_names or list(features_df.columns)
+            metadata={
+                'probability': probability,
+                'current_price': current_price
+            }
         )
         
         logger.info(
@@ -341,7 +357,7 @@ class LSTMPredictor:
         # Key indicators
         explanation = {
             'prediction': prediction.direction,
-            'probability': prediction.probability,
+            'probability': prediction.metadata.get('probability', 0.5),
             'confidence': prediction.confidence,
             'timestamp': prediction.timestamp.isoformat(),
             'technical_indicators': {
@@ -436,20 +452,23 @@ if __name__ == "__main__":
         # Create mock prediction for demonstration
         mock_prediction = ModelPrediction(
             symbol="PLTR",
-            timestamp=datetime.now(),
+            predicted_price=30.50,
             direction="UP",
-            probability=0.75,
             confidence=0.50,
+            features_used=["RSI", "MACD", "BB_position", "SMA_20", "volume_ratio"],
+            timestamp=datetime.now(),
             model_name="LSTM",
-            features_used=["RSI", "MACD", "BB_position", "SMA_20", "volume_ratio"]
+            metadata={'probability': 0.75, 'current_price': 30.00}
         )
         
         print("\nMock Prediction:")
         print(f"  Symbol: {mock_prediction.symbol}")
         print(f"  Direction: {mock_prediction.direction}")
-        print(f"  Probability: {mock_prediction.probability:.3f}")
+        print(f"  Predicted Price: ${mock_prediction.predicted_price:.2f}")
         print(f"  Confidence: {mock_prediction.confidence:.3f}")
         print(f"  Timestamp: {mock_prediction.timestamp}")
+        if mock_prediction.metadata:
+            print(f"  Probability: {mock_prediction.metadata.get('probability', 0):.3f}")
         
     else:
         print(f"Loading model from: {model_path}")
@@ -481,10 +500,12 @@ if __name__ == "__main__":
         print("\nPrediction Results:")
         print(f"  Symbol: {prediction.symbol}")
         print(f"  Direction: {prediction.direction}")
-        print(f"  Probability: {prediction.probability:.3f}")
+        print(f"  Predicted Price: ${prediction.predicted_price:.2f}")
         print(f"  Confidence: {prediction.confidence:.3f}")
         print(f"  Model: {prediction.model_name}")
         print(f"  Timestamp: {prediction.timestamp}")
+        if prediction.metadata:
+            print(f"  Probability: {prediction.metadata.get('probability', 0):.3f}")
         
         # Get explanation
         print("\nGenerating explanation...")
@@ -492,7 +513,7 @@ if __name__ == "__main__":
         
         print("\nTechnical Indicators:")
         for indicator, value in explanation['technical_indicators'].items():
-            print(f"  {indicator}: {value:.3f}")
+            print(f"  {indicator}: {value:.2f}")
         
         print("\nInterpretation:")
         for indicator, interp in explanation['interpretation'].items():

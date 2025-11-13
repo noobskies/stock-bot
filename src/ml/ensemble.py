@@ -120,11 +120,13 @@ class EnsemblePredictor:
         if self.lstm_predictor is not None:
             try:
                 lstm_pred = self.lstm_predictor.predict_next_day(df, symbol)
-                predictions['lstm'] = lstm_pred.probability
+                # Get probability from metadata (stored there to match ModelPrediction dataclass)
+                lstm_probability = lstm_pred.metadata.get('probability', 0.5)
+                predictions['lstm'] = lstm_probability
                 weights['lstm'] = self.lstm_weight
                 logger.info(
                     f"LSTM: direction={lstm_pred.direction}, "
-                    f"prob={lstm_pred.probability:.3f}, "
+                    f"prob={lstm_probability:.3f}, "
                     f"conf={lstm_pred.confidence:.3f}"
                 )
             except Exception as e:
@@ -187,15 +189,35 @@ class EnsemblePredictor:
         # More agreement between models = higher confidence
         confidence = self._calculate_ensemble_confidence(predictions, weights)
         
+        # Calculate predicted price based on ensemble probability
+        current_price = df.iloc[-1]['close']
+        # Use probability to estimate price movement magnitude
+        # Higher probability = larger expected move
+        if direction == "UP":
+            # For UP direction, use probability above 0.5 to scale the move
+            move_percent = (ensemble_probability - 0.5) * 0.04  # 0.5-1.0 -> 0-2%
+            predicted_price = current_price * (1 + move_percent)
+        else:
+            # For DOWN direction, use probability below 0.5 to scale the move
+            move_percent = (0.5 - ensemble_probability) * 0.04  # 0.5-0.0 -> 0-2%
+            predicted_price = current_price * (1 - move_percent)
+        
         # Create ensemble prediction
         prediction = ModelPrediction(
             symbol=symbol,
-            timestamp=datetime.now(),
+            predicted_price=predicted_price,
             direction=direction,
-            probability=ensemble_probability,
             confidence=confidence,
+            features_used=["LSTM", "RandomForest", "Momentum"],
+            timestamp=datetime.now(),
             model_name="Ensemble",
-            features_used=["LSTM", "RandomForest", "Momentum"]
+            metadata={
+                'ensemble_probability': ensemble_probability,
+                'lstm_weight': weights.get('lstm', 0),
+                'rf_weight': weights.get('rf', 0),
+                'momentum_weight': weights.get('momentum', 0),
+                'current_price': current_price
+            }
         )
         
         logger.info(
@@ -506,18 +528,19 @@ if __name__ == "__main__":
         # Create mock ensemble prediction
         mock_prediction = ModelPrediction(
             symbol="PLTR",
-            timestamp=datetime.now(),
+            predicted_price=32.50,
             direction="UP",
-            probability=0.72,
             confidence=0.65,
+            features_used=["LSTM", "RandomForest", "Momentum"],
+            timestamp=datetime.now(),
             model_name="Ensemble",
-            features_used=["LSTM", "RandomForest", "Momentum"]
+            metadata={'ensemble_probability': 0.72, 'current_price': 32.00}
         )
         
         print("\nMock Ensemble Prediction:")
         print(f"  Symbol: {mock_prediction.symbol}")
         print(f"  Direction: {mock_prediction.direction}")
-        print(f"  Probability: {mock_prediction.probability:.3f}")
+        print(f"  Predicted Price: ${mock_prediction.predicted_price:.2f}")
         print(f"  Confidence: {mock_prediction.confidence:.3f}")
         print(f"  Model: {mock_prediction.model_name}")
         print(f"  Methods: {', '.join(mock_prediction.features_used)}")
@@ -552,9 +575,11 @@ if __name__ == "__main__":
         print("\nEnsemble Prediction Results:")
         print(f"  Symbol: {prediction.symbol}")
         print(f"  Direction: {prediction.direction}")
-        print(f"  Probability: {prediction.probability:.3f}")
+        print(f"  Predicted Price: ${prediction.predicted_price:.2f}")
         print(f"  Confidence: {prediction.confidence:.3f}")
         print(f"  Model: {prediction.model_name}")
         print(f"  Timestamp: {prediction.timestamp}")
+        if prediction.metadata:
+            print(f"  Ensemble Probability: {prediction.metadata.get('ensemble_probability', 0):.3f}")
     
     print("\n=== Demo Complete ===")

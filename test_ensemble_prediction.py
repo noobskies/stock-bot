@@ -168,20 +168,26 @@ def test_ensemble_prediction():
         print(f"Symbol:           {prediction.symbol}")
         print(f"Timestamp:        {prediction.timestamp}")
         print(f"Direction:        {prediction.direction}")
-        print(f"Probability:      {prediction.probability:.1%}")
         print(f"Confidence:       {prediction.confidence:.1%}")
         print(f"Model:            {prediction.model_name}")
         print(f"Features Used:    {', '.join(prediction.features_used)}")
         
-        # Get current price from dataframe
-        current_price = df.iloc[-1]['close']
+        # Get current and predicted price
+        current_price = prediction.metadata.get('current_price', df.iloc[-1]['close'])
         print(f"\nCurrent Price:    ${current_price:.2f}")
+        print(f"Predicted Price:  ${prediction.predicted_price:.2f}")
         
-        # Estimate expected direction based on probability
+        # Calculate expected change
+        price_change = ((prediction.predicted_price / current_price) - 1) * 100
         if prediction.direction == "UP":
-            print(f"Expected Movement: Price likely to rise")
+            print(f"Expected Change:  +{price_change:.2f}%")
         else:
-            print(f"Expected Movement: Price likely to fall")
+            print(f"Expected Change:  {price_change:.2f}%")
+        
+        # Show ensemble probability from metadata
+        if prediction.metadata and 'ensemble_probability' in prediction.metadata:
+            prob = prediction.metadata['ensemble_probability']
+            print(f"Ensemble Prob:    {prob:.1%}")
         
     except Exception as e:
         print(f"❌ ERROR generating prediction: {e}")
@@ -216,12 +222,18 @@ def test_ensemble_prediction():
     else:
         print(f"❌ Check 3: FAILED - Confidence out of range: {prediction.confidence}")
     
-    # Check 4: Probability in valid range
-    if 0.0 <= prediction.probability <= 1.0:
-        print(f"✓ Check 4: Probability in valid range ({prediction.probability:.1%})")
-        checks_passed += 1
+    # Check 4: Predicted price is reasonable
+    current_price = prediction.metadata.get('current_price', 0)
+    if current_price > 0:
+        price_change_pct = abs((prediction.predicted_price / current_price) - 1) * 100
+        if price_change_pct < 20:
+            print(f"✓ Check 4: Reasonable predicted price ({price_change_pct:.2f}% change)")
+            checks_passed += 1
+        else:
+            print(f"❌ Check 4: FAILED - Unrealistic price change: {price_change_pct:.2f}%")
     else:
-        print(f"❌ Check 4: FAILED - Probability out of range: {prediction.probability}")
+        print(f"✓ Check 4: Predicted price present (${prediction.predicted_price:.2f})")
+        checks_passed += 1
     
     # Check 5: Model name present
     if prediction.model_name:
