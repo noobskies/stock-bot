@@ -6,37 +6,40 @@
 
 **Programming Language**
 
-- **Python 3.10+**
+- **Python 3.12.3** (Verified working, 3.10+ required)
   - Type hints for better code quality
   - Structural pattern matching (match/case)
   - Better error messages
-  - Performance improvements over 3.9
+  - Performance improvements over 3.9+
+  - **Note**: Requires updated package versions for compatibility
 
 **Machine Learning**
 
-- **TensorFlow 2.14.0**: LSTM neural network implementation
-- **Keras**: High-level neural network API (included in TensorFlow)
+- **TensorFlow 2.19.1**: LSTM neural network implementation (updated for Python 3.12)
+- **Keras 3.12.0**: High-level neural network API (included in TensorFlow)
 - **scikit-learn 1.3.2**: Preprocessing, Random Forest, ensemble methods
 - **pandas 2.1.3**: Data manipulation and time series handling
 - **numpy 1.26.2**: Numerical computing and array operations
 
 **Trading & Market Data**
 
-- **alpaca-trade-api 3.0.2**: Alpaca broker integration
+- **alpaca-trade-api 3.2.0+**: Alpaca broker integration (updated for Python 3.12)
   - Paper trading (default)
   - Live trading (optional)
   - Real-time market data
   - Order management
+  - **Note**: Uses `import alpaca_trade_api as tradeapi` (not `alpaca-py`)
 - **yfinance 0.2.32**: Yahoo Finance data (backup/historical)
 
 **Technical Analysis**
 
-- **TA-Lib (Python wrapper 0.4.28)**: Technical indicators
+- **TA-Lib 0.6.8**: Technical indicators (installed separately)
   - RSI (Relative Strength Index)
   - MACD (Moving Average Convergence Divergence)
   - Bollinger Bands
   - Moving Averages (SMA, EMA)
   - Volume indicators
+  - **Note**: C library installed from source, Python package installed via pip
 
 **Web Framework**
 
@@ -426,16 +429,18 @@ git push origin main
 
 ### Critical Dependencies
 
-**TensorFlow 2.14.0**
+**TensorFlow 2.19.1** (Updated for Python 3.12 compatibility)
 
 - **Purpose**: LSTM neural network training and inference
-- **GPU Support**: Optional (CUDA 11.8, cuDNN 8.6)
+- **GPU Support**: Optional (CUDA 12.x, cuDNN 9.x)
 - **Alternatives**: PyTorch (not chosen due to Keras simplicity)
+- **Python 3.12 Notes**: TensorFlow 2.14.0 not available for Python 3.12, must use 2.16.0+
 
 **Installation Issues**:
 
 - M1/M2 Macs: Use `tensorflow-macos` instead
 - Windows: May require Visual C++ redistributable
+- Python 3.12: Requires TensorFlow 2.16.0 or newer (we use 2.19.1)
 
 **scikit-learn 1.3.2**
 
@@ -449,28 +454,40 @@ git push origin main
 - **Performance**: Fast for <100K rows (our typical size: <1K)
 - **Compatibility**: Works with TensorFlow, numpy, matplotlib
 
-**alpaca-trade-api 3.0.2**
+**alpaca-trade-api 3.2.0+** (Updated for Python 3.12 compatibility)
 
 - **Purpose**: Broker integration, order execution
 - **Documentation**: https://alpaca.markets/docs/python-sdk/
 - **Authentication**: API key + secret (stored in .env)
 - **Paper Trading**: Separate endpoint, realistic simulation
+- **Python 3.12 Notes**: Version 3.0.2 had PyYAML 6.0 dependency issues, use 3.2.0+
+- **Import Pattern**: `import alpaca_trade_api as tradeapi` (not `from alpaca import ...`)
 
-**TA-Lib (Python wrapper 0.4.28)**
+**TA-Lib 0.6.8** (Installed separately from requirements.txt)
 
 - **Purpose**: Technical analysis indicators
-- **C Dependency**: Requires TA-Lib C library installed first
+- **C Dependency**: Requires TA-Lib C library installed first from source
+- **Installation**: C library built from source, Python package installed via pip
+- **Python 3.12 Notes**: Version 0.4.28 has numpy compatibility issues, use 0.6.8
 - **Alternatives**: pandas-ta (pure Python, slower, less features)
 
 **Common Installation Issues**:
 
 ```bash
-# If TA-Lib fails to install
-# 1. Ensure C library installed first (see Development Setup)
-# 2. Try installing from source
-pip install --no-binary :all: TA-Lib
+# For Python 3.12, install TA-Lib separately:
+# 1. Install C library from source
+cd /tmp
+wget http://prdownloads.sourceforge.net/ta-lib/ta-lib-0.4.0-src.tar.gz
+tar -xzf ta-lib-0.4.0-src.tar.gz
+cd ta-lib/
+./configure --prefix=/usr
+make
+sudo make install
 
-# 3. Or use pandas-ta as alternative (add to requirements.txt)
+# 2. Install Python package (newer version)
+pip install TA-Lib  # Will install 0.6.8 automatically
+
+# 3. Or use pandas-ta as alternative
 pip install pandas-ta
 ```
 
@@ -771,11 +788,34 @@ pip install TA-Lib
 # Error: "No module named 'tensorflow'" after installation
 
 # Solution: Verify Python version
-python --version  # Must be 3.8-3.11
+python --version  # Must be 3.8-3.12
 
-# Reinstall in venv
+# For Python 3.12, use TensorFlow 2.16.0 or newer
 pip uninstall tensorflow
-pip install tensorflow==2.14.0
+pip install tensorflow==2.19.1
+
+# For Python 3.10-3.11
+pip install tensorflow==2.14.0  # or any 2.x version
+```
+
+**2a. Python 3.12 Compatibility Issues**
+
+```bash
+# Error: TensorFlow 2.14.0 not available for Python 3.12
+
+# Solution: Update to TensorFlow 2.19.1
+pip install tensorflow==2.19.1
+
+# Error: alpaca-trade-api PyYAML 6.0 build failure
+
+# Solution: Use alpaca-trade-api 3.2.0 or newer
+pip install alpaca-trade-api>=3.2.0
+
+# Error: TA-Lib 0.4.28 fails to build with numpy 2.x
+
+# Solution: Install TA-Lib C library first, then install separately
+# (See TA-Lib installation section above)
+pip install TA-Lib  # Installs 0.6.8 automatically
 ```
 
 **3. Alpaca API Connection Fails**

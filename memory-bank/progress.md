@@ -572,9 +572,61 @@
 
 ## Known Issues
 
-**None yet** - Project is at initialization stage
+### Critical Issues
+
+**1. Alpaca API Import Incompatibility** (Discovered November 13, 2025)
+
+- **Severity**: HIGH - Blocks application from running
+- **Description**: Code written for `alpaca-py` package, but `alpaca-trade-api` package installed
+- **Root Cause**: Implementation used newer Alpaca SDK imports, but requirements.txt specifies older SDK
+- **Affected Modules**:
+  - src/data/data_fetcher.py (lines 14-16)
+  - src/trading/executor.py (import statements)
+  - src/trading/position_manager.py (import statements)
+- **Example Error**:
+  ```
+  ModuleNotFoundError: No module named 'alpaca'
+  Should be: import alpaca_trade_api as tradeapi
+  ```
+- **Resolution**: Update imports in 3 files to use `alpaca_trade_api` package
+- **Timeline**: Must fix before Phase 8 can begin
+- **Workaround**: None - must fix imports
+- **Status**: Identified, not yet fixed
 
 ## Recent Additions
+
+### November 13, 2025 - Session 2 (Verification)
+
+**Environment Verification Complete**
+
+- Verified Python 3.12.3 installation
+- Resolved Python 3.12 compatibility issues:
+  - TensorFlow: 2.14.0 → 2.19.1 (compatible with Python 3.12)
+  - alpaca-trade-api: 3.0.2 → >=3.2.0 (fixes PyYAML 6.0 issue)
+  - TA-Lib: Installed C library from source + Python package 0.6.8
+- All 60+ dependencies installed successfully
+- requirements.txt updated with compatibility notes
+- Identified critical Alpaca API import incompatibility (blocker)
+
+**Dependency Installation Success**:
+
+- ✅ TensorFlow 2.19.1 (645 MB) - ML framework
+- ✅ pandas 2.1.3, numpy 1.26.2 - Data manipulation
+- ✅ scikit-learn 1.3.2, scipy 1.16.3 - ML algorithms
+- ✅ Flask 3.0.0 + SQLAlchemy + Cors - Web framework
+- ✅ alpaca-trade-api 3.2.0 - Broker integration
+- ✅ TA-Lib 0.6.8 - Technical indicators
+- ✅ APScheduler 3.10.4 - Task scheduling
+- ✅ loguru 0.7.2 - Logging
+- ✅ pydantic 2.5.2 - Data validation
+- ✅ pytest 7.4.3 + pytest-cov 4.1.0 - Testing
+
+**Key Findings**:
+
+- Code cannot run due to Alpaca API import mismatch
+- Need to update 3 files before application is functional
+- Virtual environment properly configured
+- All dependencies compatible with Python 3.12.3
 
 ### November 13, 2025 - Session 1
 

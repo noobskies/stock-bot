@@ -1,13 +1,13 @@
 # Trading & Market Data
-alpaca-trade-api==3.0.2          # Alpaca broker integration
+alpaca-trade-api>=3.2.0          # Alpaca broker integration (updated for Python 3.12)
 yfinance==0.2.32                  # Yahoo Finance historical data
 
 # Machine Learning
-tensorflow==2.14.0                # LSTM neural networks
+tensorflow==2.19.1                # LSTM neural networks (updated for Python 3.12 compatibility)
 scikit-learn==1.3.2               # Preprocessing, ensemble methods
 pandas==2.1.3                     # Data manipulation
 numpy==1.26.2                     # Numerical computing
-TA-Lib==0.4.28                    # Technical indicators (requires TA-Lib C library)
+# TA-Lib already installed (version 0.6.8 compatible with Python 3.12)
 
 # Web Dashboard
 Flask==3.0.0                      # Web framework
