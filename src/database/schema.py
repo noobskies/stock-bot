@@ -94,7 +94,7 @@ class Prediction(Base):
     target_date = Column(DateTime, nullable=False)  # Date being predicted
     accuracy = Column(Boolean, nullable=True)  # True if prediction was correct
     error = Column(Float, nullable=True)  # Prediction error
-    metadata = Column(Text, nullable=True)  # JSON string of additional data
+    prediction_metadata = Column(Text, nullable=True)  # JSON string of additional data
     created_at = Column(DateTime, default=datetime.utcnow)
     
     def __repr__(self):
