@@ -114,17 +114,22 @@ class SignalGenerator:
         should_auto_execute = self._should_auto_execute(prediction.confidence)
         
         # Create trading signal
+        # Get feature importance from metadata if available
+        feature_importance = prediction.metadata.get('feature_importance', {})
+        
         signal = TradingSignal(
             symbol=prediction.symbol,
             signal_type=signal_type,
             confidence=prediction.confidence,
-            entry_price=current_price,
+            predicted_direction=prediction.direction,
             timestamp=datetime.now(timezone.utc),
-            model_prediction=prediction.predicted_direction,
-            technical_indicators=prediction.feature_importance,
-            reasoning=self._generate_reasoning(prediction, signal_type),
-            requires_approval=not should_auto_execute
+            features=feature_importance,
+            entry_price=current_price
         )
+        
+        # Add reasoning as an attribute (not in constructor)
+        signal.reasoning = self._generate_reasoning(prediction, signal_type)
+        signal.requires_approval = not should_auto_execute
         
         logger.info(
             f"Signal generated: {signal.signal_type.value} {signal.symbol} "
@@ -155,7 +160,7 @@ class SignalGenerator:
             - If long position and prediction UP → Hold (no signal)
             - If long position and prediction DOWN → SELL
         """
-        predicted_direction = prediction.predicted_direction.upper()
+        predicted_direction = prediction.direction.upper()
         
         # No current position
         if current_position is None:
@@ -200,6 +205,18 @@ class SignalGenerator:
         else:  # HYBRID
             return confidence >= self.auto_threshold
     
+    def should_execute_trade(self, signal: TradingSignal) -> bool:
+        """
+        Check if a signal should be auto-executed based on current trading mode.
+        
+        Args:
+            signal: Trading signal to evaluate
+        
+        Returns:
+            True if should auto-execute, False if requires manual approval
+        """
+        return self._should_auto_execute(signal.confidence)
+    
     def _generate_reasoning(
         self,
         prediction: ModelPrediction,
@@ -215,7 +232,7 @@ class SignalGenerator:
         Returns:
             Reasoning string explaining the signal
         """
-        direction = prediction.predicted_direction.upper()
+        direction = prediction.direction.upper()
         confidence = prediction.confidence
         
         reasoning = (
@@ -224,9 +241,10 @@ class SignalGenerator:
         )
         
         # Add top technical indicators if available
-        if prediction.feature_importance:
+        feature_importance = prediction.metadata.get('feature_importance', {})
+        if feature_importance:
             top_features = sorted(
-                prediction.feature_importance.items(),
+                feature_importance.items(),
                 key=lambda x: x[1],
                 reverse=True
             )[:3]
