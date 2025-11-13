@@ -209,17 +209,30 @@ class TradingBot:
             
             # Create BotConfig
             self.config = BotConfig(
+                # Trading configuration
                 trading_mode=trading_mode,
                 symbols=config_dict.get('trading', {}).get('symbols', ['PLTR']),
                 initial_capital=config_dict.get('trading', {}).get('initial_capital', 10000),
                 max_positions=config_dict.get('trading', {}).get('max_positions', 5),
+                close_positions_eod=config_dict.get('trading', {}).get('close_positions_eod', True),
+                # Risk management
                 risk_per_trade=config_dict.get('risk', {}).get('risk_per_trade', 0.02),
                 max_position_size=config_dict.get('risk', {}).get('max_position_size', 0.20),
+                max_portfolio_exposure=config_dict.get('risk', {}).get('max_portfolio_exposure', 0.20),
+                daily_loss_limit=config_dict.get('risk', {}).get('daily_loss_limit', 0.05),
                 stop_loss_percent=config_dict.get('risk', {}).get('stop_loss_percent', 0.03),
-                confidence_threshold=config_dict.get('ml', {}).get('prediction_confidence_threshold', 0.70),
-                auto_execute_threshold=config_dict.get('ml', {}).get('auto_execute_threshold', 0.80),
+                trailing_stop_percent=config_dict.get('risk', {}).get('trailing_stop_percent', 0.02),
+                trailing_stop_activation=config_dict.get('risk', {}).get('trailing_stop_activation', 0.05),
+                # ML configuration
                 model_path=config_dict.get('ml', {}).get('model_path', 'models/lstm_model.h5'),
-                close_positions_eod=config_dict.get('trading', {}).get('close_positions_eod', True)
+                sequence_length=config_dict.get('ml', {}).get('sequence_length', 60),
+                prediction_confidence_threshold=config_dict.get('ml', {}).get('prediction_confidence_threshold', 0.70),
+                auto_execute_threshold=config_dict.get('ml', {}).get('auto_execute_threshold', 0.80),
+                # Database
+                database_url=os.getenv('DATABASE_URL', 'sqlite:///trading_bot.db'),
+                # Logging
+                log_level=config_dict.get('logging', {}).get('level', 'INFO'),
+                log_dir=config_dict.get('logging', {}).get('log_dir', 'logs/')
             )
             
             logger.info(f"Configuration loaded: mode={trading_mode_str}, symbols={self.config.symbols}")
@@ -283,32 +296,40 @@ class TradingBot:
                 logger.warning("Bot will run without ML predictions - manual mode only")
                 self.predictor = None
             
-            self.ensemble = EnsemblePredictor()
+            self.ensemble = EnsemblePredictor(
+                lstm_model_path=self.config.model_path,
+                lstm_weight=0.5,
+                rf_weight=0.3,
+                momentum_weight=0.2,
+                sequence_length=self.config.sequence_length,
+                confidence_threshold=self.config.prediction_confidence_threshold
+            )
             logger.debug("ML modules created")
             
+            # Risk modules (create before trading modules as they depend on risk_calculator)
+            self.risk_calculator = RiskCalculator(config=self.config)
+            self.portfolio_monitor = PortfolioMonitor(
+                config=self.config,
+                initial_capital=self.config.initial_capital
+            )
+            self.stop_loss_manager = StopLossManager(config=self.config)
+            logger.debug("Risk modules created")
+            
             # Trading modules
-            self.signal_generator = SignalGenerator(mode=self.config.trading_mode)
+            self.signal_generator = SignalGenerator(
+                confidence_threshold=self.config.prediction_confidence_threshold,
+                auto_threshold=self.config.auto_execute_threshold,
+                trading_mode=self.config.trading_mode
+            )
             self.signal_queue = SignalQueue()
             self.executor = AlpacaExecutor()
             self.position_manager = PositionManager(self.executor)
             self.order_manager = OrderManager(
                 executor=self.executor,
-                position_manager=self.position_manager
+                position_manager=self.position_manager,
+                risk_calculator=self.risk_calculator
             )
             logger.debug("Trading modules created")
-            
-            # Risk modules
-            self.risk_calculator = RiskCalculator(
-                max_position_size=self.config.max_position_size,
-                risk_per_trade=self.config.risk_per_trade,
-                stop_loss_percent=self.config.stop_loss_percent
-            )
-            self.portfolio_monitor = PortfolioMonitor(
-                initial_capital=self.config.initial_capital,
-                max_positions=self.config.max_positions
-            )
-            self.stop_loss_manager = StopLossManager()
-            logger.debug("Risk modules created")
             
             return True
             
@@ -321,9 +342,20 @@ class TradingBot:
         try:
             account = self.executor.get_account()
             if account:
-                logger.info(f"Connected to Alpaca: Account value=${float(account.equity):,.2f}")
-                logger.info(f"Buying power: ${float(account.buying_power):,.2f}")
-                logger.info(f"Paper trading: {account.account_number.startswith('P')}")
+                # Handle dict or object response
+                if isinstance(account, dict):
+                    equity = float(account.get('equity', 0))
+                    buying_power = float(account.get('buying_power', 0))
+                    # Paper accounts don't have account_number in dict
+                    is_paper = os.getenv('ALPACA_IS_PAPER', 'true').lower() == 'true'
+                else:
+                    equity = float(account.equity)
+                    buying_power = float(account.buying_power)
+                    is_paper = account.account_number.startswith('P')
+                
+                logger.info(f"Connected to Alpaca: Account value=${equity:,.2f}")
+                logger.info(f"Buying power: ${buying_power:,.2f}")
+                logger.info(f"Paper trading: {is_paper}")
                 return True
             else:
                 logger.error("Failed to get account information")
@@ -338,7 +370,7 @@ class TradingBot:
         try:
             state = self.db_manager.get_bot_state()
             if state:
-                logger.info(f"Loaded bot state: mode={state['trading_mode']}, last_update={state['last_update']}")
+                logger.info(f"Loaded bot state: mode={state.get('trading_mode', 'unknown')}")
             else:
                 # Create initial state
                 self.db_manager.update_bot_state(
@@ -350,7 +382,7 @@ class TradingBot:
                 logger.info("Created initial bot state")
                 
         except Exception as e:
-            logger.exception(f"Error loading bot state: {e}")
+            logger.warning(f"Could not load bot state (non-critical): {e}")
     
     def _setup_scheduler(self):
         """Setup APScheduler for automated tasks."""
