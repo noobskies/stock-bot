@@ -1,0 +1,31 @@
+# Trading & Market Data
+alpaca-trade-api==3.0.2          # Alpaca broker integration
+yfinance==0.2.32                  # Yahoo Finance historical data
+
+# Machine Learning
+tensorflow==2.14.0                # LSTM neural networks
+scikit-learn==1.3.2               # Preprocessing, ensemble methods
+pandas==2.1.3                     # Data manipulation
+numpy==1.26.2                     # Numerical computing
+TA-Lib==0.4.28                    # Technical indicators (requires TA-Lib C library)
+
+# Web Dashboard
+Flask==3.0.0                      # Web framework
+Flask-SQLAlchemy==3.1.1           # Database ORM
+Flask-Cors==4.0.0                 # CORS support
+
+# Infrastructure
+SQLAlchemy==2.0.23                # Database toolkit
+APScheduler==3.10.4               # Task scheduling
+python-dotenv==1.0.0              # Environment management
+loguru==0.7.2                     # Advanced logging
+pydantic==2.5.2                   # Data validation
+
+# Utilities
+requests==2.31.0                  # HTTP requests
+python-dateutil==2.8.2            # Date utilities
+pytz==2023.3                      # Timezone handling
+
+# Testing
+pytest==7.4.3                     # Testing framework
+pytest-cov==4.1.0                 # Coverage reports
