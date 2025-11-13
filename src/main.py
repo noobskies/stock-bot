@@ -288,8 +288,7 @@ class TradingBot:
             
             # ML modules
             if Path(self.config.model_path).exists():
-                self.predictor = LSTMPredictor()
-                self.predictor.load_model(self.config.model_path)
+                self.predictor = LSTMPredictor(model_path=self.config.model_path)
                 logger.info(f"Loaded LSTM model from {self.config.model_path}")
             else:
                 logger.warning(f"Model file not found: {self.config.model_path}")
@@ -373,12 +372,12 @@ class TradingBot:
                 logger.info(f"Loaded bot state: mode={state.get('trading_mode', 'unknown')}")
             else:
                 # Create initial state
-                self.db_manager.update_bot_state(
-                    trading_mode=self.config.trading_mode.value,
-                    is_active=False,
-                    daily_pnl=0.0,
-                    total_trades_today=0
-                )
+                self.db_manager.update_bot_state({
+                    'trading_mode': self.config.trading_mode.value,
+                    'is_running': False,
+                    'daily_pnl': 0.0,
+                    'total_trades_today': 0
+                })
                 logger.info("Created initial bot state")
                 
         except Exception as e:
@@ -451,10 +450,10 @@ class TradingBot:
             logger.info("Starting trading bot...")
             
             # Update bot state in database
-            self.db_manager.update_bot_state(
-                trading_mode=self.config.trading_mode.value,
-                is_active=True
-            )
+            self.db_manager.update_bot_state({
+                'trading_mode': self.config.trading_mode.value,
+                'is_running': True
+            })
             
             # Start scheduler
             self.scheduler.start()
@@ -495,10 +494,10 @@ class TradingBot:
                 self.scheduler.shutdown(wait=True)
             
             # Update bot state
-            self.db_manager.update_bot_state(
-                trading_mode=self.config.trading_mode.value,
-                is_active=False
-            )
+            self.db_manager.update_bot_state({
+                'trading_mode': self.config.trading_mode.value,
+                'is_running': False
+            })
             
             self.is_running = False
             logger.success("Trading bot stopped successfully")
@@ -653,11 +652,13 @@ class TradingBot:
             
             # Step 7: Validate against risk rules
             logger.debug("Validating trade against risk rules...")
-            portfolio_state = self.portfolio_monitor.get_portfolio_state()
+            risk_metrics = self.portfolio_monitor.get_risk_metrics()
+            current_positions = self.position_manager.get_all_positions()
             
             is_valid, reason = self.risk_calculator.validate_trade(
                 signal=signal,
-                portfolio=portfolio_state
+                portfolio=risk_metrics,
+                current_positions=current_positions
             )
             
             if not is_valid:
@@ -711,10 +712,11 @@ class TradingBot:
             logger.info(f"Executing signal: {signal.signal_type.value} {signal.symbol}")
             
             # Calculate position size based on risk
-            portfolio_state = self.portfolio_monitor.get_portfolio_state()
+            risk_metrics = self.portfolio_monitor.get_risk_metrics()
             quantity = self.risk_calculator.calculate_position_size(
                 signal=signal,
-                portfolio=portfolio_state
+                portfolio_value=risk_metrics['portfolio_value'],
+                current_price=signal.entry_price
             )
             
             if quantity <= 0:
@@ -748,11 +750,11 @@ class TradingBot:
                 # Update bot state
                 state = self.db_manager.get_bot_state()
                 if state:
-                    self.db_manager.update_bot_state(
-                        trading_mode=self.config.trading_mode.value,
-                        is_active=True,
-                        total_trades_today=state.get('total_trades_today', 0) + 1
-                    )
+                    self.db_manager.update_bot_state({
+                        'trading_mode': self.config.trading_mode.value,
+                        'is_running': True,
+                        'total_trades_today': state.get('total_trades_today', 0) + 1
+                    })
                 
                 return True
             else:
@@ -780,10 +782,12 @@ class TradingBot:
                 return False
             
             # Re-validate risk rules (conditions may have changed)
-            portfolio_state = self.portfolio_monitor.get_portfolio_state()
+            risk_metrics = self.portfolio_monitor.get_risk_metrics()
+            current_positions = self.position_manager.get_all_positions()
             is_valid, reason = self.risk_calculator.validate_trade(
                 signal=signal,
-                portfolio=portfolio_state
+                portfolio=risk_metrics,
+                current_positions=current_positions
             )
             
             if not is_valid:
@@ -943,11 +947,11 @@ class TradingBot:
             self.stop()
             
             # Update bot state
-            self.db_manager.update_bot_state(
-                trading_mode=self.config.trading_mode.value,
-                is_active=False,
-                circuit_breaker_active=True
-            )
+            self.db_manager.update_bot_state({
+                'trading_mode': self.config.trading_mode.value,
+                'is_running': False,
+                'circuit_breaker_triggered': True
+            })
             
             logger.critical("Circuit breaker active - bot stopped")
             
@@ -1004,12 +1008,12 @@ class TradingBot:
                 )
             
             # Reset daily counters
-            self.db_manager.update_bot_state(
-                trading_mode=self.config.trading_mode.value,
-                is_active=self.is_running,
-                daily_pnl=0.0,
-                total_trades_today=0
-            )
+            self.db_manager.update_bot_state({
+                'trading_mode': self.config.trading_mode.value,
+                'is_running': self.is_running,
+                'daily_pnl': 0.0,
+                'total_trades_today': 0
+            })
             
             logger.info("End-of-day tasks complete")
             logger.info("=" * 80)
@@ -1025,17 +1029,18 @@ class TradingBot:
             Dict containing bot state and metrics
         """
         try:
-            portfolio_state = self.portfolio_monitor.get_portfolio_state()
-            risk_metrics = self.portfolio_monitor.get_risk_metrics()
-            pending_signals = self.signal_queue.get_all_signals()
+            pending_signals = self.signal_queue.get_pending_signals()
+            pending_signal_count = self.signal_queue.get_signal_count()
+            
+            # Get positions from position manager
+            open_positions = self.position_manager.get_all_positions() if self.position_manager else []
             
             return {
                 'is_running': self.is_running,
                 'trading_mode': self.config.trading_mode.value if self.config else None,
                 'symbols': self.config.symbols if self.config else [],
-                'portfolio': portfolio_state,
-                'risk_metrics': risk_metrics,
-                'pending_signals': len(pending_signals),
+                'open_positions': len(open_positions),
+                'pending_signals': pending_signal_count,
                 'market_open': self.is_market_hours()
             }
             
