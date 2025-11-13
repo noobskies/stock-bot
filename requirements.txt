@@ -1,5 +1,5 @@
 # Trading & Market Data
-alpaca-trade-api>=3.2.0          # Alpaca broker integration (updated for Python 3.12)
+alpaca-py>=0.30.1                 # Alpaca broker integration (modern SDK for Python 3.12)
 yfinance==0.2.32                  # Yahoo Finance historical data
 
 # Machine Learning

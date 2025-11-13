@@ -32,7 +32,7 @@ from src.data.data_validator import DataValidator
 
 # ML modules
 from src.ml.predictor import LSTMPredictor
-from src.ml.ensemble import EnsembleModel
+from src.ml.ensemble import EnsemblePredictor
 
 # Trading modules
 from src.trading.signal_generator import SignalGenerator, SignalQueue
@@ -96,7 +96,7 @@ class TradingBot:
         self.feature_engineer: Optional[FeatureEngineer] = None
         self.data_validator: Optional[DataValidator] = None
         self.predictor: Optional[LSTMPredictor] = None
-        self.ensemble: Optional[EnsembleModel] = None
+        self.ensemble: Optional[EnsemblePredictor] = None
         self.signal_generator: Optional[SignalGenerator] = None
         self.signal_queue: Optional[SignalQueue] = None
         self.executor: Optional[AlpacaExecutor] = None
@@ -283,7 +283,7 @@ class TradingBot:
                 logger.warning("Bot will run without ML predictions - manual mode only")
                 self.predictor = None
             
-            self.ensemble = EnsembleModel()
+            self.ensemble = EnsemblePredictor()
             logger.debug("ML modules created")
             
             # Trading modules
