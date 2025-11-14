@@ -1,6 +1,6 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 
 import { AppLayout } from "@/components/layout/AppLayout";
@@ -9,13 +9,12 @@ import { TradesPage } from "@/pages/TradesPage";
 import { SignalsPage } from "@/pages/SignalsPage";
 import { SettingsPage } from "@/pages/SettingsPage";
 
-// Create QueryClient instance with default options
+// Create a client
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30000, // 30 seconds
       refetchOnWindowFocus: false,
-      retry: 1,
     },
   },
 });
@@ -25,19 +24,16 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<AppLayout />}>
-            <Route index element={<DashboardPage />} />
-            <Route path="trades" element={<TradesPage />} />
-            <Route path="signals" element={<SignalsPage />} />
-            <Route path="settings" element={<SettingsPage />} />
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            <Route path="/dashboard" element={<DashboardPage />} />
+            <Route path="/trades" element={<TradesPage />} />
+            <Route path="/signals" element={<SignalsPage />} />
+            <Route path="/settings" element={<SettingsPage />} />
           </Route>
         </Routes>
+        <Toaster position="top-right" richColors closeButton />
       </BrowserRouter>
-
-      {/* Toast notifications */}
-      <Toaster />
-
-      {/* React Query DevTools (only in development) */}
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   );

@@ -7,6 +7,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { TableRowSkeleton } from "@/components/shared/TableRowSkeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { formatDate, formatConfidence } from "@/lib/utils/format";
 import type { TradingSignal } from "@/types";
@@ -21,9 +22,22 @@ export function SignalsTable({ signals, isLoading }: SignalsTableProps) {
   if (isLoading) {
     return (
       <div className="rounded-md border">
-        <div className="p-8 text-center text-sm text-muted-foreground">
-          Loading signals...
-        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Timestamp</TableHead>
+              <TableHead>Symbol</TableHead>
+              <TableHead>Direction</TableHead>
+              <TableHead className="text-right">Confidence</TableHead>
+              <TableHead className="text-right">Entry Price</TableHead>
+              <TableHead className="text-right">Quantity</TableHead>
+              <TableHead>Prediction</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRowSkeleton columnCount={7} rowCount={5} />
+          </TableBody>
+        </Table>
       </div>
     );
   }

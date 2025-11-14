@@ -7,6 +7,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
+import { TableRowSkeleton } from "@/components/shared/TableRowSkeleton";
 import { EmptyState } from "@/components/shared/EmptyState";
 import {
   formatCurrency,
@@ -27,9 +28,25 @@ export function TradesTable({ trades, isLoading }: TradesTableProps) {
   if (isLoading) {
     return (
       <div className="rounded-md border">
-        <div className="p-8 text-center text-sm text-muted-foreground">
-          Loading trades...
-        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Timestamp</TableHead>
+              <TableHead>Symbol</TableHead>
+              <TableHead>Side</TableHead>
+              <TableHead className="text-right">Quantity</TableHead>
+              <TableHead className="text-right">Entry Price</TableHead>
+              <TableHead className="text-right">Exit Price</TableHead>
+              <TableHead className="text-right">P&L ($)</TableHead>
+              <TableHead className="text-right">P&L (%)</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Duration</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            <TableRowSkeleton columnCount={10} rowCount={8} />
+          </TableBody>
+        </Table>
       </div>
     );
   }

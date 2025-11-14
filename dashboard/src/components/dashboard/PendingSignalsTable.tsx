@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { TableRowSkeleton } from "@/components/shared/TableRowSkeleton";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 import { ErrorMessage } from "@/components/shared/ErrorMessage";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -41,7 +42,20 @@ export function PendingSignalsTable() {
           <CardDescription>Signals awaiting approval</CardDescription>
         </CardHeader>
         <CardContent>
-          <LoadingSpinner size="lg" text="Loading signals..." />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Symbol</TableHead>
+                <TableHead>Direction</TableHead>
+                <TableHead>Confidence</TableHead>
+                <TableHead>Time</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRowSkeleton columnCount={5} rowCount={3} />
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     );

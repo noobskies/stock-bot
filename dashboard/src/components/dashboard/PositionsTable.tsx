@@ -16,7 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { TableRowSkeleton } from "@/components/shared/TableRowSkeleton";
 import { ErrorMessage } from "@/components/shared/ErrorMessage";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { formatCurrency, formatPercent, getPnlColor } from "@/lib/utils/format";
@@ -32,7 +32,36 @@ export function PositionsTable() {
           <CardDescription>Current open positions</CardDescription>
         </CardHeader>
         <CardContent>
-          <LoadingSpinner size="lg" text="Loading positions..." />
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Symbol</TableHead>
+                <TableHead className="text-right">Quantity</TableHead>
+                <TableHead className="text-right">Entry Price</TableHead>
+                <TableHead className="text-right">Current Price</TableHead>
+                <TableHead className="text-right">P&L ($)</TableHead>
+                <TableHead className="text-right">P&L (%)</TableHead>
+                <TableHead className="text-right">Stop Loss</TableHead>
+                <TableHead className="text-right">Trailing Stop</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              <TableRowSkeleton
+                columnCount={8}
+                rowCount={3}
+                columnWidths={[
+                  "w-16",
+                  "w-12",
+                  "w-20",
+                  "w-20",
+                  "w-20",
+                  "w-16",
+                  "w-20",
+                  "w-20",
+                ]}
+              />
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     );
