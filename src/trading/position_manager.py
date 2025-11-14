@@ -110,7 +110,7 @@ class PositionManager:
         quantity: int,
         entry_price: float,
         entry_time: datetime,
-        stop_loss_price: Optional[float] = None
+        stop_loss: Optional[float] = None
     ) -> Position:
         """
         Add a new position to tracking.
@@ -120,7 +120,7 @@ class PositionManager:
             quantity: Number of shares
             entry_price: Entry price per share
             entry_time: Time position was opened
-            stop_loss_price: Initial stop loss price
+            stop_loss: Initial stop loss price
         
         Returns:
             Created Position object
@@ -130,24 +130,23 @@ class PositionManager:
             quantity=quantity,
             entry_price=entry_price,
             current_price=entry_price,
-            market_value=entry_price * quantity,
+            stop_loss=stop_loss if stop_loss else 0.0,
             unrealized_pnl=0.0,
-            unrealized_pnl_percent=0.0,
             status=PositionStatus.OPEN,
             entry_time=entry_time,
-            stop_loss_price=stop_loss_price,
-            trailing_stop_price=None
+            trailing_stop=None,
+            unrealized_pnl_percent=0.0
         )
         
         self.positions[symbol] = position
         
         # Register with stop loss manager
-        if self.stop_loss_manager and stop_loss_price:
+        if self.stop_loss_manager and stop_loss:
             self.stop_loss_manager.register_position(position)
         
         logger.info(
             f"Position added: {symbol} - {quantity} shares @ ${entry_price:.2f} "
-            f"(Stop: ${stop_loss_price:.2f})" if stop_loss_price else
+            f"(Stop: ${stop_loss:.2f})" if stop_loss else
             f"Position added: {symbol} - {quantity} shares @ ${entry_price:.2f}"
         )
         
@@ -177,7 +176,6 @@ class PositionManager:
                 # Update position
                 position = self.positions[symbol]
                 position.current_price = current_price
-                position.market_value = current_price * position.quantity
                 position.unrealized_pnl = (current_price - position.entry_price) * position.quantity
                 position.unrealized_pnl_percent = (
                     (current_price - position.entry_price) / position.entry_price * 100
@@ -208,8 +206,8 @@ class PositionManager:
         old_position = self.positions[symbol]
         
         # Preserve stop loss and trailing stop from old position
-        new_position.stop_loss_price = old_position.stop_loss_price
-        new_position.trailing_stop_price = old_position.trailing_stop_price
+        new_position.stop_loss = old_position.stop_loss
+        new_position.trailing_stop = old_position.trailing_stop
         new_position.entry_time = old_position.entry_time
         
         self.positions[symbol] = new_position
@@ -263,7 +261,7 @@ class PositionManager:
         Returns:
             Sum of all position market values
         """
-        return sum(p.market_value for p in self.positions.values())
+        return sum(p.current_price * p.quantity for p in self.positions.values())
     
     def get_total_unrealized_pnl(self) -> float:
         """
@@ -371,7 +369,7 @@ class PositionManager:
             logger.warning(f"Cannot set stop loss - position not found: {symbol}")
             return
         
-        position.stop_loss_price = stop_price
+        position.stop_loss = stop_price
         
         # Update stop loss manager
         if self.stop_loss_manager:
@@ -392,7 +390,7 @@ class PositionManager:
             logger.warning(f"Cannot set trailing stop - position not found: {symbol}")
             return
         
-        position.trailing_stop_price = trailing_price
+        position.trailing_stop = trailing_price
         
         # Update stop loss manager
         if self.stop_loss_manager:
@@ -468,14 +466,15 @@ if __name__ == "__main__":
     if positions:
         print(f"\n=== Open Positions ({len(positions)}) ===")
         for position in positions:
+            market_value = position.current_price * position.quantity
             print(f"\n{position.symbol}:")
             print(f"  Quantity: {position.quantity}")
             print(f"  Entry: ${position.entry_price:.2f}")
             print(f"  Current: ${position.current_price:.2f}")
-            print(f"  Market Value: ${position.market_value:.2f}")
+            print(f"  Market Value: ${market_value:.2f}")
             print(f"  Unrealized P&L: ${position.unrealized_pnl:.2f} ({position.unrealized_pnl_percent:.2f}%)")
-            if position.stop_loss_price:
-                print(f"  Stop Loss: ${position.stop_loss_price:.2f}")
+            if position.stop_loss > 0:
+                print(f"  Stop Loss: ${position.stop_loss:.2f}")
     else:
         print("\nNo open positions")
     

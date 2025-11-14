@@ -53,53 +53,42 @@ class PositionMonitorOrchestrator:
         """
         try:
             # Sync positions with broker
-            positions = self.position_manager.sync_positions()
+            self.position_manager.sync_positions()
+            
+            # Update all position prices at once (batch update)
+            updated_prices = self.position_manager.update_position_prices()
+            
+            # Get all positions for monitoring
+            positions = self.position_manager.get_all_positions()
             
             if not positions:
                 return
             
             logger.debug(f"Monitoring {len(positions)} positions...")
             
+            # Register any new positions with stop loss manager
             for position in positions:
-                # Get current price
-                current_price = self.data_fetcher.fetch_latest_price(position.symbol)
-                if current_price is None:
-                    logger.warning(f"Could not fetch price for {position.symbol}")
-                    continue
-                
-                # Update position price
-                self.position_manager.update_position_price(
-                    symbol=position.symbol,
-                    current_price=current_price
-                )
-                
-                # Register with stop loss manager if not already registered
-                if not self.stop_loss_manager.is_registered(position.symbol):
-                    self.stop_loss_manager.register_position(
-                        symbol=position.symbol,
-                        entry_price=position.entry_price,
-                        quantity=position.quantity,
-                        side=position.side,
-                        stop_loss_percent=self.config.stop_loss_percent
-                    )
-                
-                # Update stop loss manager with current price
-                self.stop_loss_manager.update_price(position.symbol, current_price)
-                
-                # Check if stop loss triggered
-                triggered, reason = self.stop_loss_manager.check_stop_triggered(position.symbol)
-                
-                if triggered:
-                    logger.warning(f"Stop loss triggered for {position.symbol}: {reason}")
-                    self._execute_stop_loss(position.symbol, reason)
+                # Check if position is registered (returns None if not)
+                if self.stop_loss_manager.get_stop_info(position.symbol) is None:
+                    # Pass entire Position object
+                    self.stop_loss_manager.register_position(position)
+            
+            # Check ALL stops at once (batch operation)
+            # StopLossManager internally updates trailing stops based on position.current_price
+            triggered_stops = self.stop_loss_manager.check_stops(positions)
+            
+            # Execute any triggered stops
+            for position, reason in triggered_stops:
+                logger.warning(f"Stop loss triggered for {position.symbol}: {reason}")
+                self._execute_stop_loss(position.symbol, reason)
             
             # Update portfolio state
             account = self.executor.get_account()
             if account:
                 cash = float(account.get('cash', 0)) if isinstance(account, dict) else float(account.cash)
-                self.portfolio_monitor.update_state(
-                    cash=cash,
-                    positions=positions
+                self.portfolio_monitor.update_portfolio_state(
+                    current_positions=positions,
+                    cash_available=cash
                 )
             
         except Exception as e:
