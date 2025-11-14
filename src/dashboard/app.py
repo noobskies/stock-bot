@@ -118,54 +118,104 @@ def get_status():
 
 @app.route('/api/portfolio')
 def get_portfolio():
-    """Get current portfolio state and metrics."""
+    """Get current portfolio state and metrics from REAL Alpaca account."""
     try:
-        # Get active positions from database
-        active_positions = db_manager.get_active_positions()
+        # Get bot instance with Alpaca API client
+        bot = get_bot_instance()
+        if not bot:
+            return jsonify({'error': 'Bot not available'}), 500
         
-        # Calculate portfolio totals from positions
-        total_position_value = sum(pos.get('current_price', 0) * pos.get('quantity', 0) for pos in active_positions)
-        total_unrealized_pnl = sum(pos.get('unrealized_pnl', 0) for pos in active_positions)
-        
-        # Get latest performance metrics
-        perf_metrics = db_manager.get_performance_summary(days=30)
-        
-        # Calculate portfolio value (simplified - using initial capital + unrealized P&L)
-        initial_capital = 10000  # From config
-        total_value = initial_capital + total_unrealized_pnl
-        cash_balance = total_value - total_position_value
-        
-        # Format positions
-        positions = []
-        for pos in active_positions:
-            positions.append({
-                'symbol': pos['symbol'],
-                'quantity': pos['quantity'],
-                'entry_price': pos['entry_price'],
-                'current_price': pos['current_price'],
-                'unrealized_pnl': pos['unrealized_pnl'],
-                'unrealized_pnl_percent': (pos['unrealized_pnl'] / (pos['entry_price'] * pos['quantity']) * 100) if pos['entry_price'] > 0 else 0,
-                'stop_loss': pos.get('stop_loss'),
-                'trailing_stop': pos.get('trailing_stop')
+        # If bot not initialized yet, return empty portfolio
+        if not bot.executor:
+            logger.info("Bot not initialized - returning empty portfolio")
+            return jsonify({
+                'portfolio': {
+                    'total_value': 0,
+                    'cash': 0,
+                    'positions_value': 0,
+                    'daily_pnl': 0,
+                    'daily_pnl_percent': 0,
+                    'buying_power': 0
+                },
+                'risk': {
+                    'total_exposure': 0,
+                    'position_count': 0,
+                    'max_positions': 5,
+                    'daily_loss_limit': 5.0,
+                    'circuit_breaker_active': False
+                },
+                'positions': [],
+                'performance': {
+                    'win_rate': 0,
+                    'total_trades': 0,
+                    'profit_factor': 0,
+                    'sharpe_ratio': 0,
+                    'max_drawdown': 0
+                }
             })
         
-        # Calculate daily P&L from today's trades
-        today_perf = db_manager.calculate_daily_performance(datetime.now())
-        daily_pnl = today_perf.get('daily_pnl', 0) if today_perf else 0
-        daily_pnl_percent = (daily_pnl / initial_capital * 100) if initial_capital > 0 else 0
+        # Fetch REAL account data from Alpaca using executor wrapper method
+        alpaca_account = bot.executor.get_account()
+        
+        # Extract real account values (already in correct format from wrapper)
+        total_value = alpaca_account['equity']
+        cash_balance = alpaca_account['cash']
+        buying_power = alpaca_account['buying_power']
+        
+        # Fetch REAL positions from Alpaca using executor wrapper method
+        alpaca_positions = bot.executor.get_open_positions()
+        
+        # Process real positions (Position dataclass objects)
+        positions = []
+        total_position_value = 0.0
+        total_unrealized_pnl = 0.0
+        
+        for pos in alpaca_positions:
+            # Position is already a dataclass with proper types
+            unrealized_pnl = pos.unrealized_pnl
+            position_value = pos.market_value
+            entry_price = pos.entry_price
+            quantity = pos.quantity
+            
+            # Get stop loss info from database if available
+            db_position = db_manager.get_position_by_symbol(pos.symbol)
+            stop_loss = db_position.get('stop_loss') if db_position else None
+            trailing_stop = db_position.get('trailing_stop') if db_position else None
+            
+            positions.append({
+                'symbol': pos.symbol,
+                'quantity': quantity,
+                'entry_price': entry_price,
+                'current_price': pos.current_price,
+                'unrealized_pnl': unrealized_pnl,
+                'unrealized_pnl_percent': pos.unrealized_pnl_percent,
+                'market_value': position_value,
+                'stop_loss': stop_loss,
+                'trailing_stop': trailing_stop
+            })
+            
+            total_position_value += position_value
+            total_unrealized_pnl += unrealized_pnl
+        
+        # Calculate daily P&L from Alpaca account (already floats from wrapper)
+        daily_pnl = alpaca_account['equity'] - alpaca_account['last_equity']
+        daily_pnl_percent = (daily_pnl / alpaca_account['last_equity'] * 100) if alpaca_account['last_equity'] > 0 else 0
+        
+        # Get performance metrics from database (historical data)
+        perf_metrics = db_manager.get_performance_summary(days=30)
         
         return jsonify({
             'portfolio': {
-                'total_value': total_value,
-                'cash': cash_balance,
-                'positions_value': total_position_value,
-                'daily_pnl': daily_pnl,
-                'daily_pnl_percent': daily_pnl_percent,
-                'buying_power': cash_balance  # Simplified - actual would be cash * margin
+                'total_value': total_value,  # REAL from Alpaca
+                'cash': cash_balance,  # REAL from Alpaca
+                'positions_value': total_position_value,  # Calculated from real positions
+                'daily_pnl': daily_pnl,  # REAL from Alpaca
+                'daily_pnl_percent': daily_pnl_percent,  # Calculated from real data
+                'buying_power': buying_power  # REAL from Alpaca
             },
             'risk': {
                 'total_exposure': (total_position_value / total_value * 100) if total_value > 0 else 0,
-                'position_count': len(active_positions),
+                'position_count': len(alpaca_positions),
                 'max_positions': 5,  # From config
                 'daily_loss_limit': 5.0,  # From config (5%)
                 'circuit_breaker_active': daily_pnl_percent <= -5.0
@@ -180,7 +230,7 @@ def get_portfolio():
             }
         })
     except Exception as e:
-        logger.error(f"Error getting portfolio data: {e}")
+        logger.error(f"Error getting portfolio data from Alpaca: {e}")
         return jsonify({'error': str(e)}), 500
 
 

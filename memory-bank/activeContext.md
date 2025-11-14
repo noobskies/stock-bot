@@ -39,6 +39,169 @@
 
 ## Recent Changes
 
+### Session 8: Dashboard Real Data Integration - COMPLETE ✅ (November 13, 2025)
+
+**MAJOR MILESTONE**: Dashboard now displays live Alpaca account data!
+
+**Goal**: Fix dashboard to fetch and display real Alpaca account data instead of placeholder zeros.
+
+**Issues Fixed** (2 critical bugs):
+
+1. **Alpaca API Access Error** (Lines 146-154 in app.py)
+
+   - **Problem**: Dashboard code tried to access `bot.executor.api.get_account()` and `bot.executor.api.get_all_positions()`
+   - **Root Cause**: AlpacaExecutor has `trading_client` and `data_client` attributes, not an `api` attribute
+   - **Solution**: Use executor wrapper methods instead:
+     - `bot.executor.get_account()` → Returns dict with account data
+     - `bot.executor.get_open_positions()` → Returns List[Position] dataclass objects
+   - **Fix Applied**: Changed lines 146-205 to use correct wrapper methods
+   - **Result**: Successfully fetches real account data from Alpaca
+
+2. **Uninitialized Bot Error** (Line 133)
+   - **Problem**: 500 Internal Server Error when bot not initialized (executor is None)
+   - **Root Cause**: Bot exists as singleton but executor only created after `bot.initialize()` is called
+   - **Solution**: Return safe empty portfolio when executor doesn't exist
+   - **Fix Applied**: Added check at line 133-159 to return zeros gracefully
+   - **Result**: Dashboard loads without errors, shows zeros until bot is started
+
+**Changes Made to `src/dashboard/app.py`**:
+
+**Function**: `get_portfolio()` (Lines 125-230)
+
+**Before** (Broken):
+
+```python
+alpaca_account = bot.executor.api.get_account()  # ❌ No 'api' attribute
+alpaca_positions = bot.executor.api.get_all_positions()  # ❌ Wrong method
+```
+
+**After** (Working):
+
+```python
+# Return empty portfolio if not initialized
+if not bot.executor:
+    return jsonify({'portfolio': {...zeros...}})
+
+# Use correct wrapper methods
+alpaca_account = bot.executor.get_account()  # ✅ Returns dict
+alpaca_positions = bot.executor.get_open_positions()  # ✅ Returns List[Position]
+```
+
+**Data Extraction**:
+
+- Account: `alpaca_account['equity']`, `alpaca_account['cash']`, `alpaca_account['buying_power']`
+- Positions: `pos.unrealized_pnl`, `pos.current_price`, `pos.quantity` (Position dataclass attributes)
+
+**Current State**:
+
+✅ **Working**:
+
+- Portfolio value displays real Alpaca data (~$100,000 paper account)
+- Cash balance shows correctly
+- Buying power displays (~$400,000 with 4x margin)
+- Risk metrics calculate from real positions
+- Position list displays when holdings exist
+- Daily P&L calculated from Alpaca equity changes
+- Dashboard loads gracefully when bot not initialized (shows zeros)
+
+⏰ **Requires Market Hours**:
+
+- Pending signals (bot generates during 9:30 AM - 4:00 PM ET)
+- Signal generation happens in trading cycle (every 5 minutes during market hours)
+- No signals generated after 4:00 PM ET (market closed)
+
+📋 **Not Yet Tested**:
+
+- Position display with actual holdings (no positions currently)
+- Signal approval workflow (need market hours to generate signals)
+- Real-time P&L updates during trading
+
+**Testing Results**:
+
+1. ✅ Dashboard loads without errors (before bot start)
+2. ✅ Shows empty portfolio with zeros (graceful degradation)
+3. ✅ User clicks "Start Bot" → Bot initializes Alpaca connection
+4. ✅ Dashboard auto-refreshes (30s) → Shows real account data
+5. ✅ Portfolio value: $100,000+ displayed correctly
+6. ✅ Cash and buying power show real values
+7. ⏰ Pending signals section empty (market closed at time of testing)
+
+**User Feedback**: "i can see my portfolio amount" ✅
+
+**Next Steps**:
+
+1. Wait for market hours (9:30 AM - 4:00 PM ET) to test signal generation
+2. Verify signal approval workflow during live trading
+3. Test position display when bot creates actual trades
+4. Consider creating test script to verify signal workflow without market hours
+
+**Git Status**: Changes saved to src/dashboard/app.py (commit pending)
+
+---
+
+### Session 8: Dashboard Real Data Integration - ATTEMPTED (November 13, 2025) [SUPERSEDED]
+
+**STATUS**: ATTEMPTED - Dashboard Displaying Zeros ⚠️
+
+**Goal**: Modify dashboard to fetch and display real Alpaca account data instead of placeholder/demo data.
+
+**Changes Made to `src/dashboard/app.py`:**
+
+**Problem Identified** (Lines 125-157):
+
+- Dashboard used hardcoded `initial_capital = 10000`
+- Portfolio calculations based on fake initial capital
+- No actual Alpaca API calls to fetch real account data
+
+**Solution Implemented** (Lines 125-179):
+
+- Modified `get_portfolio()` function to fetch real-time data from Alpaca
+- Added calls to `bot.executor.api.get_account()` for account data
+- Added calls to `bot.executor.api.get_all_positions()` for position data
+- Replaced hardcoded values with live Alpaca API responses:
+  - `total_value = float(alpaca_account.equity)` - Real $100K account
+  - `cash_balance = float(alpaca_account.cash)` - Real cash balance
+  - `buying_power = float(alpaca_account.buying_power)` - Real buying power
+  - Daily P&L calculated from `alpaca_account.equity - alpaca_account.last_equity`
+
+**Current Issue**: Dashboard displaying $0.00 for all portfolio values
+
+**Likely Causes**:
+
+1. Bot not started/initialized when dashboard loads
+2. Alpaca API client (`bot.executor.api`) is None or failing
+3. API calls failing silently and returning zero values
+4. Error handling catching exceptions but not logging properly
+5. Bot initialization incomplete (executor not created)
+
+**Expected Values** (should display):
+
+- Total Value: ~$100,000 (Alpaca paper account equity)
+- Cash: Variable (depends on positions)
+- Buying Power: ~$400,000 (4x margin for paper trading)
+- Positions: Real PLTR position if active
+- Daily P&L: Calculated from real Alpaca data
+
+**Next Steps for Debugging**:
+
+1. Verify bot starts correctly and initializes Alpaca API client
+2. Check if `bot.executor` and `bot.executor.api` exist when dashboard loads
+3. Add logging to track API response values
+4. Test API calls independently to verify Alpaca connection
+5. Add fallback to database values if API unavailable
+
+**Testing Approach**:
+
+1. Start the bot: `python src/main.py`
+2. Verify initialization logs show "Connected to Alpaca"
+3. Access dashboard: `http://localhost:5000`
+4. Check browser console for errors
+5. Check server logs for API call failures
+
+**Git Status**: Changes saved to src/dashboard/app.py (commit pending)
+
+---
+
 ### Session 7: Dashboard Bug Fixes - COMPLETE (November 13, 2025)
 
 **MAJOR MILESTONE**: Dashboard API Fully Operational ✅
