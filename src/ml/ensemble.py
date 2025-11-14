@@ -18,7 +18,7 @@ from sklearn.preprocessing import StandardScaler
 import joblib
 from pathlib import Path
 
-from src.types.trading_types import ModelPrediction
+from src.bot_types.trading_types import ModelPrediction
 from src.ml.predictor import LSTMPredictor
 from src.data.feature_engineer import FeatureEngineer
 

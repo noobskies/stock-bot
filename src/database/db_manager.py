@@ -21,7 +21,7 @@ from src.database.schema import (
     Base, Trade, Position, Prediction, Signal, 
     PerformanceMetric, BotState
 )
-from src.types.trading_types import (
+from src.bot_types.trading_types import (
     TradingSignal, Position as PositionType, TradeRecord,
     PerformanceMetrics, ModelPrediction, SignalType, OrderStatus
 )

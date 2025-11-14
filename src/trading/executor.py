@@ -28,7 +28,7 @@ from alpaca.trading.enums import OrderSide, TimeInForce, OrderStatus as AlpacaOr
 from alpaca.data.historical import StockHistoricalDataClient
 from loguru import logger
 
-from src.types.trading_types import OrderStatus, Position, PositionStatus
+from src.bot_types.trading_types import OrderStatus, Position, PositionStatus
 
 
 class AlpacaExecutor:

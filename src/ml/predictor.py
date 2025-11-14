@@ -16,7 +16,7 @@ from datetime import datetime
 from loguru import logger
 
 from tensorflow import keras
-from src.types.trading_types import ModelPrediction
+from src.bot_types.trading_types import ModelPrediction
 from src.data.feature_engineer import FeatureEngineer
 
 

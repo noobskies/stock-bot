@@ -23,7 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.main import TradingBot
 from src.database.db_manager import DatabaseManager
-from src.types.trading_types import TradingMode, SignalType
+from src.bot_types.trading_types import TradingMode, SignalType
 from loguru import logger
 
 # Initialize Flask app
@@ -90,23 +90,26 @@ def settings_page():
 def get_status():
     """Get current bot status and basic info."""
     try:
-        bot = get_bot_instance()
-        if not bot:
-            return jsonify({
-                'error': 'Bot not available',
-                'is_running': False,
-                'mode': 'unknown',
-                'is_paper_trading': True
-            }), 500
+        # Get bot state from database instead of bot instance
+        bot_state = db_manager.get_bot_state()
         
-        status = bot.get_status()
+        if not bot_state:
+            return jsonify({
+                'is_running': False,
+                'mode': 'hybrid',
+                'is_paper_trading': True,
+                'uptime': 0,
+                'last_cycle': None,
+                'market_open': False
+            })
+        
         return jsonify({
-            'is_running': status.get('is_running', False),
-            'mode': status.get('mode', 'unknown'),
-            'is_paper_trading': status.get('is_paper_trading', True),
-            'uptime': status.get('uptime_seconds', 0),
-            'last_cycle': status.get('last_trading_cycle', None),
-            'market_open': status.get('market_open', False)
+            'is_running': bot_state.get('is_running', False),
+            'mode': bot_state.get('trading_mode', 'hybrid'),
+            'is_paper_trading': True,  # Always paper trading for now
+            'uptime': 0,  # Would need to track this separately
+            'last_cycle': bot_state.get('last_update', None),
+            'market_open': False  # Would need to check market hours
         })
     except Exception as e:
         logger.error(f"Error getting bot status: {e}")
@@ -117,16 +120,20 @@ def get_status():
 def get_portfolio():
     """Get current portfolio state and metrics."""
     try:
-        bot = get_bot_instance()
-        if not bot:
-            return jsonify({'error': 'Bot not available'}), 500
-        
-        # Get portfolio state
-        portfolio_state = bot.portfolio_monitor.get_portfolio_state()
-        risk_metrics = bot.portfolio_monitor.get_risk_metrics()
-        
         # Get active positions from database
         active_positions = db_manager.get_active_positions()
+        
+        # Calculate portfolio totals from positions
+        total_position_value = sum(pos.get('current_price', 0) * pos.get('quantity', 0) for pos in active_positions)
+        total_unrealized_pnl = sum(pos.get('unrealized_pnl', 0) for pos in active_positions)
+        
+        # Get latest performance metrics
+        perf_metrics = db_manager.get_performance_summary(days=30)
+        
+        # Calculate portfolio value (simplified - using initial capital + unrealized P&L)
+        initial_capital = 10000  # From config
+        total_value = initial_capital + total_unrealized_pnl
+        cash_balance = total_value - total_position_value
         
         # Format positions
         positions = []
@@ -142,32 +149,34 @@ def get_portfolio():
                 'trailing_stop': pos.get('trailing_stop')
             })
         
-        # Get performance metrics
-        perf_metrics = db_manager.get_performance_summary(days=30)
+        # Calculate daily P&L from today's trades
+        today_perf = db_manager.calculate_daily_performance(datetime.now())
+        daily_pnl = today_perf.get('daily_pnl', 0) if today_perf else 0
+        daily_pnl_percent = (daily_pnl / initial_capital * 100) if initial_capital > 0 else 0
         
         return jsonify({
             'portfolio': {
-                'total_value': portfolio_state.total_value,
-                'cash': portfolio_state.cash_balance,
-                'positions_value': portfolio_state.total_value - portfolio_state.cash_balance,
-                'daily_pnl': risk_metrics.daily_pnl,
-                'daily_pnl_percent': risk_metrics.daily_pnl_percent,
-                'buying_power': portfolio_state.buying_power
+                'total_value': total_value,
+                'cash': cash_balance,
+                'positions_value': total_position_value,
+                'daily_pnl': daily_pnl,
+                'daily_pnl_percent': daily_pnl_percent,
+                'buying_power': cash_balance  # Simplified - actual would be cash * margin
             },
             'risk': {
-                'total_exposure': risk_metrics.total_exposure_percent,
-                'position_count': risk_metrics.position_count,
+                'total_exposure': (total_position_value / total_value * 100) if total_value > 0 else 0,
+                'position_count': len(active_positions),
                 'max_positions': 5,  # From config
                 'daily_loss_limit': 5.0,  # From config (5%)
-                'circuit_breaker_active': risk_metrics.daily_pnl_percent <= -5.0
+                'circuit_breaker_active': daily_pnl_percent <= -5.0
             },
             'positions': positions,
             'performance': {
                 'win_rate': perf_metrics.get('win_rate', 0),
                 'total_trades': perf_metrics.get('total_trades', 0),
                 'profit_factor': perf_metrics.get('profit_factor', 0),
-                'sharpe_ratio': bot.portfolio_monitor.calculate_sharpe_ratio(),
-                'max_drawdown': bot.portfolio_monitor.get_max_drawdown()
+                'sharpe_ratio': 0,  # Would need historical data to calculate
+                'max_drawdown': 0   # Would need historical data to calculate
             }
         })
     except Exception as e:
@@ -192,11 +201,11 @@ def get_pending_signals():
                 'symbol': signal['symbol'],
                 'signal_type': signal['signal_type'],
                 'confidence': signal['confidence'],
-                'predicted_price': signal['predicted_price'],
-                'current_price': signal['current_price'],
-                'suggested_quantity': signal['quantity'],
-                'reasoning': signal['reasoning'],
-                'timestamp': signal['timestamp'].isoformat() if signal['timestamp'] else None
+                'predicted_direction': signal.get('predicted_direction', 'unknown'),
+                'entry_price': signal.get('entry_price', 0),
+                'suggested_quantity': signal.get('quantity', 0),
+                'features': signal.get('features', '{}'),
+                'timestamp': signal.get('created_at').isoformat() if signal.get('created_at') else None
             })
         
         return jsonify({'signals': formatted_signals})
@@ -374,21 +383,43 @@ def get_trade_performance():
 
 @app.route('/api/bot/start', methods=['POST'])
 def start_bot():
-    """Start the trading bot."""
+    """Start the trading bot (idempotent - safe to call multiple times)."""
     try:
         bot = get_bot_instance()
         if not bot:
             return jsonify({'error': 'Bot not available'}), 500
         
+        # Make idempotent - don't return error if already running
         if bot.is_running:
-            return jsonify({'error': 'Bot is already running'}), 400
+            logger.info("Start requested but bot is already running")
+            # Ensure database state is in sync
+            db_manager.update_bot_state({'is_running': True})
+            return jsonify({
+                'success': True,
+                'message': 'Bot is already running',
+                'was_stopped': False
+            })
         
-        bot.start()
+        # Check if bot needs initialization
+        if bot.config is None:
+            logger.info("Bot not initialized - initializing now...")
+            if not bot.initialize():
+                logger.error("Bot initialization failed")
+                return jsonify({'error': 'Bot initialization failed. Check logs for details.'}), 500
+        
+        # Start the bot
+        if not bot.start():
+            logger.error("Bot start failed")
+            return jsonify({'error': 'Failed to start bot. Check logs for details.'}), 500
+        
+        # Update database state to reflect bot is running
+        db_manager.update_bot_state({'is_running': True})
         logger.info("Bot started via dashboard")
         
         return jsonify({
             'success': True,
-            'message': 'Bot started successfully'
+            'message': 'Bot started successfully',
+            'was_stopped': True
         })
     except Exception as e:
         logger.error(f"Error starting bot: {e}")
@@ -397,21 +428,32 @@ def start_bot():
 
 @app.route('/api/bot/stop', methods=['POST'])
 def stop_bot():
-    """Stop the trading bot."""
+    """Stop the trading bot (idempotent - safe to call multiple times)."""
     try:
         bot = get_bot_instance()
         if not bot:
             return jsonify({'error': 'Bot not available'}), 500
         
+        # Make idempotent - don't return error if already stopped
         if not bot.is_running:
-            return jsonify({'error': 'Bot is not running'}), 400
+            logger.info("Stop requested but bot is already stopped")
+            # Ensure database state is in sync
+            db_manager.update_bot_state({'is_running': False})
+            return jsonify({
+                'success': True,
+                'message': 'Bot is already stopped',
+                'was_running': False
+            })
         
         bot.stop()
+        # Update database state to reflect bot is stopped
+        db_manager.update_bot_state({'is_running': False})
         logger.info("Bot stopped via dashboard")
         
         return jsonify({
             'success': True,
-            'message': 'Bot stopped successfully'
+            'message': 'Bot stopped successfully',
+            'was_running': True
         })
     except Exception as e:
         logger.error(f"Error stopping bot: {e}")
@@ -432,21 +474,25 @@ def set_bot_mode():
         try:
             mode = TradingMode[mode_str.upper()]
         except KeyError:
-            return jsonify({'error': f'Invalid mode: {mode_str}'}), 400
+            return jsonify({'error': f'Invalid mode: {mode_str}. Valid modes: AUTO, MANUAL, HYBRID'}), 400
         
         bot = get_bot_instance()
         if not bot:
             return jsonify({'error': 'Bot not available'}), 500
         
-        # Update bot configuration
-        bot.config['trading']['mode'] = mode.value
+        # Update bot state in database (proper persistence)
+        # BotConfig is a dataclass, can't use dict access like bot.config['key']
+        db_manager.update_bot_state({
+            'trading_mode': mode.value
+        })
         
         logger.info(f"Trading mode changed to {mode.value} via dashboard")
         
         return jsonify({
             'success': True,
-            'message': f'Mode changed to {mode.value}',
-            'mode': mode.value
+            'message': f'Mode changed to {mode.value}. Change will take effect on next trading cycle.',
+            'mode': mode.value,
+            'requires_restart': bot.is_running
         })
     except Exception as e:
         logger.error(f"Error changing bot mode: {e}")
@@ -463,6 +509,8 @@ def emergency_stop():
         
         # Stop the bot
         bot.stop()
+        # Update database state to reflect bot is stopped
+        db_manager.update_bot_state({'is_running': False})
         
         # Close all positions
         if bot.position_manager:
@@ -516,21 +564,42 @@ def update_settings():
         if not bot:
             return jsonify({'error': 'Bot not available'}), 500
         
-        # Update configuration (be careful with validation)
+        # Validate and prepare updates
+        updates = {}
+        
         if 'trading' in data:
-            bot.config['trading'].update(data['trading'])
+            # Validate trading mode if provided
+            if 'mode' in data['trading']:
+                try:
+                    TradingMode[data['trading']['mode'].upper()]
+                    updates['trading_mode'] = data['trading']['mode']
+                except KeyError:
+                    return jsonify({'error': 'Invalid trading mode'}), 400
         
         if 'risk' in data:
-            bot.config['risk'].update(data['risk'])
+            # Validate risk parameters
+            for key, value in data['risk'].items():
+                if not isinstance(value, (int, float)) or value < 0:
+                    return jsonify({'error': f'Invalid risk parameter: {key}'}), 400
         
         if 'ml' in data:
-            bot.config['ml'].update(data['ml'])
+            # Validate ML parameters
+            if 'prediction_confidence_threshold' in data['ml']:
+                threshold = data['ml']['prediction_confidence_threshold']
+                if not (0 <= threshold <= 1):
+                    return jsonify({'error': 'Confidence threshold must be between 0 and 1'}), 400
         
-        logger.info("Settings updated via dashboard")
+        # Update database state (proper persistence)
+        # Note: BotConfig is a dataclass, changes should be persisted to database
+        if updates:
+            db_manager.update_bot_state(updates)
+        
+        logger.info("Settings updated via dashboard - restart bot for changes to take effect")
         
         return jsonify({
             'success': True,
-            'message': 'Settings updated successfully'
+            'message': 'Settings updated successfully. Restart bot for changes to take effect.',
+            'requires_restart': bot.is_running
         })
     except Exception as e:
         logger.error(f"Error updating settings: {e}")

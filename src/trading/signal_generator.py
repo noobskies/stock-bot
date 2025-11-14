@@ -18,7 +18,7 @@ from enum import Enum
 
 from loguru import logger
 
-from src.types.trading_types import (
+from src.bot_types.trading_types import (
     ModelPrediction,
     TradingSignal,
     SignalType,

@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from loguru import logger
 
-from src.types.trading_types import (
+from src.bot_types.trading_types import (
     TradingSignal,
     SignalType,
     OrderStatus,
@@ -510,7 +510,7 @@ if __name__ == "__main__":
     print(f"Buying Power: ${buying_power:,.2f}")
     
     # Create a sample buy signal (commented out for safety)
-    # from src.types.trading_types import TradingSignal, SignalType
+    # from src.bot_types.trading_types import TradingSignal, SignalType
     # signal = TradingSignal(
     #     symbol='PLTR',
     #     signal_type=SignalType.BUY,

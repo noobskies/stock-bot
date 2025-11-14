@@ -49,7 +49,7 @@ from src.risk.stop_loss_manager import StopLossManager
 from src.database.db_manager import DatabaseManager
 
 # Type definitions
-from src.types.trading_types import (
+from src.bot_types.trading_types import (
     TradingMode,
     TradingSignal,
     SignalType,

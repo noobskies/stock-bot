@@ -19,7 +19,7 @@ from decimal import Decimal
 
 from loguru import logger
 
-from src.types.trading_types import Position, PositionStatus, TradeRecord
+from src.bot_types.trading_types import Position, PositionStatus, TradeRecord
 from src.trading.executor import AlpacaExecutor
 from src.risk.stop_loss_manager import StopLossManager
 
