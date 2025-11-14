@@ -16,6 +16,8 @@ from alpaca.data.requests import StockBarsRequest, StockLatestQuoteRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 import yfinance as yf
 
+from src.common.decorators import handle_data_error
+
 
 class DataFetcher:
     """Fetches market data from Alpaca and Yahoo Finance APIs."""
@@ -39,15 +41,17 @@ class DataFetcher:
             logger.warning("Alpaca API credentials not provided, will fall back to Yahoo Finance")
             self.alpaca_client = None
         else:
-            try:
-                self.alpaca_client = StockHistoricalDataClient(
-                    api_key=self.alpaca_api_key,
-                    secret_key=self.alpaca_secret_key
-                )
-                logger.info("Alpaca data client initialized successfully")
-            except Exception as e:
-                logger.error(f"Failed to initialize Alpaca client: {e}")
-                self.alpaca_client = None
+            self.alpaca_client = self._initialize_alpaca_client()
+    
+    @handle_data_error(fallback_value=None)
+    def _initialize_alpaca_client(self) -> Optional[StockHistoricalDataClient]:
+        """Initialize Alpaca client with error handling."""
+        client = StockHistoricalDataClient(
+            api_key=self.alpaca_api_key,
+            secret_key=self.alpaca_secret_key
+        )
+        logger.info("Alpaca data client initialized successfully")
+        return client
     
     def fetch_historical_data(
         self,
@@ -96,6 +100,7 @@ class DataFetcher:
         logger.error(f"Failed to fetch data for {symbol} from all sources")
         return pd.DataFrame()
     
+    @handle_data_error(fallback_value=None)
     def _fetch_from_alpaca(
         self,
         symbol: str,
@@ -115,62 +120,58 @@ class DataFetcher:
         Returns:
             DataFrame or None if fetch fails
         """
-        try:
-            # Map timeframe string to TimeFrame object
-            if timeframe == 'day':
-                tf = TimeFrame(amount=1, unit=TimeFrameUnit.Day)
-            elif timeframe == 'hour':
-                tf = TimeFrame(amount=1, unit=TimeFrameUnit.Hour)
-            elif timeframe == 'minute':
-                tf = TimeFrame(amount=1, unit=TimeFrameUnit.Minute)
-            else:
-                logger.warning(f"Unknown timeframe '{timeframe}', defaulting to day")
-                tf = TimeFrame(amount=1, unit=TimeFrameUnit.Day)
-            
-            # Create request
-            request = StockBarsRequest(
-                symbol_or_symbols=[symbol],
-                timeframe=tf,
-                start=start_date,
-                end=end_date
-            )
-            
-            # Fetch data
-            response = self.alpaca_client.get_stock_bars(request)
-            
-            # Convert to DataFrame
-            df = response.df
-            
-            if df.empty:
-                logger.warning(f"Alpaca returned empty data for {symbol}")
-                return None
-            
-            # Reset index to make symbol a column, then drop it
-            df = df.reset_index()
-            
-            # Rename columns to standard format
-            df = df.rename(columns={
-                'timestamp': 'timestamp',
-                'open': 'open',
-                'high': 'high',
-                'low': 'low',
-                'close': 'close',
-                'volume': 'volume'
-            })
-            
-            # Drop symbol column if it exists
-            if 'symbol' in df.columns:
-                df = df.drop(columns=['symbol'])
-            
-            # Set timestamp as index
-            df = df.set_index('timestamp')
-            
-            return df
+        # Map timeframe string to TimeFrame object
+        if timeframe == 'day':
+            tf = TimeFrame(amount=1, unit=TimeFrameUnit.Day)
+        elif timeframe == 'hour':
+            tf = TimeFrame(amount=1, unit=TimeFrameUnit.Hour)
+        elif timeframe == 'minute':
+            tf = TimeFrame(amount=1, unit=TimeFrameUnit.Minute)
+        else:
+            logger.warning(f"Unknown timeframe '{timeframe}', defaulting to day")
+            tf = TimeFrame(amount=1, unit=TimeFrameUnit.Day)
         
-        except Exception as e:
-            logger.error(f"Error fetching from Alpaca: {e}")
+        # Create request
+        request = StockBarsRequest(
+            symbol_or_symbols=[symbol],
+            timeframe=tf,
+            start=start_date,
+            end=end_date
+        )
+        
+        # Fetch data
+        response = self.alpaca_client.get_stock_bars(request)
+        
+        # Convert to DataFrame
+        df = response.df
+        
+        if df.empty:
+            logger.warning(f"Alpaca returned empty data for {symbol}")
             return None
+        
+        # Reset index to make symbol a column, then drop it
+        df = df.reset_index()
+        
+        # Rename columns to standard format
+        df = df.rename(columns={
+            'timestamp': 'timestamp',
+            'open': 'open',
+            'high': 'high',
+            'low': 'low',
+            'close': 'close',
+            'volume': 'volume'
+        })
+        
+        # Drop symbol column if it exists
+        if 'symbol' in df.columns:
+            df = df.drop(columns=['symbol'])
+        
+        # Set timestamp as index
+        df = df.set_index('timestamp')
+        
+        return df
     
+    @handle_data_error(fallback_value=None)
     def _fetch_from_yahoo(
         self,
         symbol: str,
@@ -188,37 +189,56 @@ class DataFetcher:
         Returns:
             DataFrame or None if fetch fails
         """
-        try:
-            # Fetch data using yfinance
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(
-                start=start_date,
-                end=end_date,
-                interval='1d'
-            )
-            
-            if df.empty:
-                logger.warning(f"Yahoo Finance returned empty data for {symbol}")
-                return None
-            
-            # Rename columns to lowercase
-            df.columns = df.columns.str.lower()
-            
-            # Keep only OHLCV columns
-            df = df[['open', 'high', 'low', 'close', 'volume']]
-            
-            # Rename index to 'timestamp'
-            df.index.name = 'timestamp'
-            
-            return df
+        # Fetch data using yfinance
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(
+            start=start_date,
+            end=end_date,
+            interval='1d'
+        )
         
-        except Exception as e:
-            logger.error(f"Error fetching from Yahoo Finance: {e}")
+        if df.empty:
+            logger.warning(f"Yahoo Finance returned empty data for {symbol}")
             return None
+        
+        # Rename columns to lowercase
+        df.columns = df.columns.str.lower()
+        
+        # Keep only OHLCV columns
+        df = df[['open', 'high', 'low', 'close', 'volume']]
+        
+        # Rename index to 'timestamp'
+        df.index.name = 'timestamp'
+        
+        return df
+    
+    @handle_data_error(fallback_value=None)
+    def _fetch_latest_price_alpaca(self, symbol: str) -> Optional[float]:
+        """Fetch latest price from Alpaca."""
+        request = StockLatestQuoteRequest(symbol_or_symbols=[symbol])
+        response = self.alpaca_client.get_stock_latest_quote(request)
+        
+        if symbol in response:
+            quote = response[symbol]
+            price = (quote.bid_price + quote.ask_price) / 2  # Mid price
+            logger.debug(f"Latest price for {symbol}: ${price:.2f} (Alpaca)")
+            return float(price)
+        return None
+    
+    @handle_data_error(fallback_value=None)
+    def _fetch_latest_price_yahoo(self, symbol: str) -> Optional[float]:
+        """Fetch latest price from Yahoo Finance."""
+        ticker = yf.Ticker(symbol)
+        data = ticker.history(period='1d', interval='1m')
+        if not data.empty:
+            price = data['Close'].iloc[-1]
+            logger.debug(f"Latest price for {symbol}: ${price:.2f} (Yahoo)")
+            return float(price)
+        return None
     
     def fetch_latest_price(self, symbol: str) -> Optional[float]:
         """
-        Fetch the latest price for a symbol.
+        Fetch the latest price for a symbol with automatic fallback.
         
         Args:
             symbol: Stock symbol
@@ -230,35 +250,58 @@ class DataFetcher:
         
         # Try Alpaca first
         if self.alpaca_client:
-            try:
-                request = StockLatestQuoteRequest(symbol_or_symbols=[symbol])
-                response = self.alpaca_client.get_stock_latest_quote(request)
-                
-                if symbol in response:
-                    quote = response[symbol]
-                    price = (quote.bid_price + quote.ask_price) / 2  # Mid price
-                    logger.debug(f"Latest price for {symbol}: ${price:.2f}")
-                    return float(price)
-            except Exception as e:
-                logger.warning(f"Alpaca latest price fetch failed: {e}")
+            price = self._fetch_latest_price_alpaca(symbol)
+            if price is not None:
+                return price
         
         # Fall back to Yahoo Finance
-        try:
-            ticker = yf.Ticker(symbol)
-            data = ticker.history(period='1d', interval='1m')
-            if not data.empty:
-                price = data['Close'].iloc[-1]
-                logger.debug(f"Latest price for {symbol}: ${price:.2f}")
-                return float(price)
-        except Exception as e:
-            logger.error(f"Yahoo Finance latest price fetch failed: {e}")
+        price = self._fetch_latest_price_yahoo(symbol)
+        if price is not None:
+            return price
         
         logger.error(f"Failed to fetch latest price for {symbol}")
         return None
     
+    @handle_data_error(fallback_value=None)
+    def _fetch_realtime_data_alpaca(self, symbol: str) -> Optional[dict]:
+        """Fetch real-time data from Alpaca."""
+        request = StockLatestQuoteRequest(symbol_or_symbols=[symbol])
+        response = self.alpaca_client.get_stock_latest_quote(request)
+        
+        if symbol in response:
+            quote = response[symbol]
+            data = {
+                'symbol': symbol,
+                'price': (quote.bid_price + quote.ask_price) / 2,
+                'bid': quote.bid_price,
+                'ask': quote.ask_price,
+                'bid_size': quote.bid_size,
+                'ask_size': quote.ask_size,
+                'timestamp': quote.timestamp
+            }
+            logger.debug(f"Real-time data for {symbol}: ${data['price']:.2f} (Alpaca)")
+            return data
+        return None
+    
+    @handle_data_error(fallback_value=None)
+    def _fetch_realtime_data_yahoo(self, symbol: str) -> Optional[dict]:
+        """Fetch real-time data from Yahoo Finance."""
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        data = {
+            'symbol': symbol,
+            'price': info.get('currentPrice', info.get('regularMarketPrice')),
+            'bid': info.get('bid'),
+            'ask': info.get('ask'),
+            'volume': info.get('volume'),
+            'timestamp': datetime.now()
+        }
+        logger.debug(f"Real-time data for {symbol}: ${data['price']:.2f} (Yahoo)")
+        return data
+    
     def fetch_realtime_data(self, symbol: str) -> Optional[dict]:
         """
-        Fetch real-time market data for a symbol.
+        Fetch real-time market data for a symbol with automatic fallback.
         
         Args:
             symbol: Stock symbol
@@ -268,43 +311,16 @@ class DataFetcher:
         """
         logger.debug(f"Fetching real-time data for {symbol}")
         
+        # Try Alpaca first
         if self.alpaca_client:
-            try:
-                request = StockLatestQuoteRequest(symbol_or_symbols=[symbol])
-                response = self.alpaca_client.get_stock_latest_quote(request)
-                
-                if symbol in response:
-                    quote = response[symbol]
-                    data = {
-                        'symbol': symbol,
-                        'price': (quote.bid_price + quote.ask_price) / 2,
-                        'bid': quote.bid_price,
-                        'ask': quote.ask_price,
-                        'bid_size': quote.bid_size,
-                        'ask_size': quote.ask_size,
-                        'timestamp': quote.timestamp
-                    }
-                    logger.debug(f"Real-time data for {symbol}: ${data['price']:.2f}")
-                    return data
-            except Exception as e:
-                logger.warning(f"Alpaca real-time data fetch failed: {e}")
+            data = self._fetch_realtime_data_alpaca(symbol)
+            if data is not None:
+                return data
         
-        # Fall back to Yahoo Finance (less real-time, but still recent)
-        try:
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
-            data = {
-                'symbol': symbol,
-                'price': info.get('currentPrice', info.get('regularMarketPrice')),
-                'bid': info.get('bid'),
-                'ask': info.get('ask'),
-                'volume': info.get('volume'),
-                'timestamp': datetime.now()
-            }
-            logger.debug(f"Real-time data for {symbol}: ${data['price']:.2f}")
+        # Fall back to Yahoo Finance
+        data = self._fetch_realtime_data_yahoo(symbol)
+        if data is not None:
             return data
-        except Exception as e:
-            logger.error(f"Yahoo Finance real-time data fetch failed: {e}")
         
         logger.error(f"Failed to fetch real-time data for {symbol}")
         return None

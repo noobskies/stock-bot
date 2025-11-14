@@ -29,6 +29,8 @@ from alpaca.data.historical import StockHistoricalDataClient
 from loguru import logger
 
 from src.bot_types.trading_types import OrderStatus, Position, PositionStatus
+from src.common.decorators import handle_broker_error
+from src.common.error_types import RetryStrategy
 
 
 class AlpacaExecutor:
@@ -121,6 +123,7 @@ class AlpacaExecutor:
             logger.error(f"Failed to get account info: {e}")
             raise
     
+    @handle_broker_error(retry_strategy=RetryStrategy.EXPONENTIAL_BACKOFF, max_retries=3)
     def place_market_order(
         self,
         symbol: str,
@@ -145,42 +148,37 @@ class AlpacaExecutor:
                 'PLTR', 10, 'buy'
             )
         """
-        try:
-            # Convert side to Alpaca enum
-            order_side = OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL
-            
-            # Convert time_in_force to Alpaca enum
-            tif_map = {
-                'day': TimeInForce.DAY,
-                'gtc': TimeInForce.GTC,
-                'ioc': TimeInForce.IOC,
-                'fok': TimeInForce.FOK
-            }
-            tif = tif_map.get(time_in_force.lower(), TimeInForce.DAY)
-            
-            # Create market order request
-            request = MarketOrderRequest(
-                symbol=symbol,
-                qty=quantity,
-                side=order_side,
-                time_in_force=tif
-            )
-            
-            # Submit order
-            order = self.trading_client.submit_order(request)
-            
-            logger.info(
-                f"Market order placed: {side.upper()} {quantity} {symbol} "
-                f"(Order ID: {order.id})"
-            )
-            
-            return True, order.id, None
-            
-        except Exception as e:
-            error_msg = f"Failed to place market order: {e}"
-            logger.error(error_msg)
-            return False, None, error_msg
+        # Convert side to Alpaca enum
+        order_side = OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL
+        
+        # Convert time_in_force to Alpaca enum
+        tif_map = {
+            'day': TimeInForce.DAY,
+            'gtc': TimeInForce.GTC,
+            'ioc': TimeInForce.IOC,
+            'fok': TimeInForce.FOK
+        }
+        tif = tif_map.get(time_in_force.lower(), TimeInForce.DAY)
+        
+        # Create market order request
+        request = MarketOrderRequest(
+            symbol=symbol,
+            qty=quantity,
+            side=order_side,
+            time_in_force=tif
+        )
+        
+        # Submit order
+        order = self.trading_client.submit_order(request)
+        
+        logger.info(
+            f"Market order placed: {side.upper()} {quantity} {symbol} "
+            f"(Order ID: {order.id})"
+        )
+        
+        return True, order.id, None
     
+    @handle_broker_error(retry_strategy=RetryStrategy.EXPONENTIAL_BACKOFF, max_retries=3)
     def place_limit_order(
         self,
         symbol: str,
@@ -207,43 +205,38 @@ class AlpacaExecutor:
                 'PLTR', 10, 'buy', 30.50
             )
         """
-        try:
-            # Convert side to Alpaca enum
-            order_side = OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL
-            
-            # Convert time_in_force to Alpaca enum
-            tif_map = {
-                'day': TimeInForce.DAY,
-                'gtc': TimeInForce.GTC,
-                'ioc': TimeInForce.IOC,
-                'fok': TimeInForce.FOK
-            }
-            tif = tif_map.get(time_in_force.lower(), TimeInForce.DAY)
-            
-            # Create limit order request
-            request = LimitOrderRequest(
-                symbol=symbol,
-                qty=quantity,
-                side=order_side,
-                time_in_force=tif,
-                limit_price=limit_price
-            )
-            
-            # Submit order
-            order = self.trading_client.submit_order(request)
-            
-            logger.info(
-                f"Limit order placed: {side.upper()} {quantity} {symbol} "
-                f"@ ${limit_price:.2f} (Order ID: {order.id})"
-            )
-            
-            return True, order.id, None
-            
-        except Exception as e:
-            error_msg = f"Failed to place limit order: {e}"
-            logger.error(error_msg)
-            return False, None, error_msg
+        # Convert side to Alpaca enum
+        order_side = OrderSide.BUY if side.lower() == 'buy' else OrderSide.SELL
+        
+        # Convert time_in_force to Alpaca enum
+        tif_map = {
+            'day': TimeInForce.DAY,
+            'gtc': TimeInForce.GTC,
+            'ioc': TimeInForce.IOC,
+            'fok': TimeInForce.FOK
+        }
+        tif = tif_map.get(time_in_force.lower(), TimeInForce.DAY)
+        
+        # Create limit order request
+        request = LimitOrderRequest(
+            symbol=symbol,
+            qty=quantity,
+            side=order_side,
+            time_in_force=tif,
+            limit_price=limit_price
+        )
+        
+        # Submit order
+        order = self.trading_client.submit_order(request)
+        
+        logger.info(
+            f"Limit order placed: {side.upper()} {quantity} {symbol} "
+            f"@ ${limit_price:.2f} (Order ID: {order.id})"
+        )
+        
+        return True, order.id, None
     
+    @handle_broker_error(retry_strategy=RetryStrategy.IMMEDIATE, max_retries=2)
     def cancel_order(self, order_id: str) -> Tuple[bool, Optional[str]]:
         """
         Cancel a pending order.
@@ -254,15 +247,11 @@ class AlpacaExecutor:
         Returns:
             Tuple of (success, error_message)
         """
-        try:
-            self.trading_client.cancel_order_by_id(order_id)
-            logger.info(f"Order cancelled: {order_id}")
-            return True, None
-        except Exception as e:
-            error_msg = f"Failed to cancel order {order_id}: {e}"
-            logger.error(error_msg)
-            return False, error_msg
+        self.trading_client.cancel_order_by_id(order_id)
+        logger.info(f"Order cancelled: {order_id}")
+        return True, None
     
+    @handle_broker_error(retry_strategy=RetryStrategy.IMMEDIATE, max_retries=2)
     def get_order_status(self, order_id: str) -> Tuple[Optional[str], Optional[Dict]]:
         """
         Get status of an order.
@@ -275,56 +264,52 @@ class AlpacaExecutor:
             status: One of 'pending', 'filled', 'cancelled', 'rejected', 'expired'
             order_details: Dict with order information
         """
-        try:
-            order = self.trading_client.get_order_by_id(order_id)
-            
-            # Map Alpaca status to our OrderStatus enum
-            status_map = {
-                AlpacaOrderStatus.NEW: 'pending',
-                AlpacaOrderStatus.PARTIALLY_FILLED: 'pending',
-                AlpacaOrderStatus.FILLED: 'filled',
-                AlpacaOrderStatus.DONE_FOR_DAY: 'pending',
-                AlpacaOrderStatus.CANCELED: 'cancelled',
-                AlpacaOrderStatus.EXPIRED: 'expired',
-                AlpacaOrderStatus.REPLACED: 'pending',
-                AlpacaOrderStatus.PENDING_CANCEL: 'cancelled',
-                AlpacaOrderStatus.PENDING_REPLACE: 'pending',
-                AlpacaOrderStatus.ACCEPTED: 'pending',
-                AlpacaOrderStatus.PENDING_NEW: 'pending',
-                AlpacaOrderStatus.ACCEPTED_FOR_BIDDING: 'pending',
-                AlpacaOrderStatus.STOPPED: 'cancelled',
-                AlpacaOrderStatus.REJECTED: 'rejected',
-                AlpacaOrderStatus.SUSPENDED: 'cancelled',
-                AlpacaOrderStatus.CALCULATED: 'pending',
-            }
-            
-            status = status_map.get(order.status, 'pending')
-            
-            # Build order details dictionary
-            details = {
-                'order_id': order.id,
-                'symbol': order.symbol,
-                'quantity': int(order.qty),
-                'side': order.side.value,
-                'type': order.type.value,
-                'status': status,
-                'filled_qty': int(order.filled_qty) if order.filled_qty else 0,
-                'filled_avg_price': float(order.filled_avg_price) if order.filled_avg_price else None,
-                'limit_price': float(order.limit_price) if order.limit_price else None,
-                'stop_price': float(order.stop_price) if order.stop_price else None,
-                'submitted_at': order.submitted_at,
-                'filled_at': order.filled_at,
-                'cancelled_at': order.cancelled_at,
-                'expired_at': order.expired_at,
-                'time_in_force': order.time_in_force.value
-            }
-            
-            return status, details
-            
-        except Exception as e:
-            logger.error(f"Failed to get order status for {order_id}: {e}")
-            return None, None
+        order = self.trading_client.get_order_by_id(order_id)
+        
+        # Map Alpaca status to our OrderStatus enum
+        status_map = {
+            AlpacaOrderStatus.NEW: 'pending',
+            AlpacaOrderStatus.PARTIALLY_FILLED: 'pending',
+            AlpacaOrderStatus.FILLED: 'filled',
+            AlpacaOrderStatus.DONE_FOR_DAY: 'pending',
+            AlpacaOrderStatus.CANCELED: 'cancelled',
+            AlpacaOrderStatus.EXPIRED: 'expired',
+            AlpacaOrderStatus.REPLACED: 'pending',
+            AlpacaOrderStatus.PENDING_CANCEL: 'cancelled',
+            AlpacaOrderStatus.PENDING_REPLACE: 'pending',
+            AlpacaOrderStatus.ACCEPTED: 'pending',
+            AlpacaOrderStatus.PENDING_NEW: 'pending',
+            AlpacaOrderStatus.ACCEPTED_FOR_BIDDING: 'pending',
+            AlpacaOrderStatus.STOPPED: 'cancelled',
+            AlpacaOrderStatus.REJECTED: 'rejected',
+            AlpacaOrderStatus.SUSPENDED: 'cancelled',
+            AlpacaOrderStatus.CALCULATED: 'pending',
+        }
+        
+        status = status_map.get(order.status, 'pending')
+        
+        # Build order details dictionary
+        details = {
+            'order_id': order.id,
+            'symbol': order.symbol,
+            'quantity': int(order.qty),
+            'side': order.side.value,
+            'type': order.type.value,
+            'status': status,
+            'filled_qty': int(order.filled_qty) if order.filled_qty else 0,
+            'filled_avg_price': float(order.filled_avg_price) if order.filled_avg_price else None,
+            'limit_price': float(order.limit_price) if order.limit_price else None,
+            'stop_price': float(order.stop_price) if order.stop_price else None,
+            'submitted_at': order.submitted_at,
+            'filled_at': order.filled_at,
+            'cancelled_at': order.cancelled_at,
+            'expired_at': order.expired_at,
+            'time_in_force': order.time_in_force.value
+        }
+        
+        return status, details
     
+    @handle_broker_error(retry_strategy=RetryStrategy.IMMEDIATE, max_retries=2)
     def get_open_positions(self) -> List[Position]:
         """
         Get all open positions from Alpaca.
@@ -332,33 +317,29 @@ class AlpacaExecutor:
         Returns:
             List of Position objects
         """
-        try:
-            positions = self.trading_client.get_all_positions()
-            
-            position_list = []
-            for pos in positions:
-                position = Position(
-                    symbol=pos.symbol,
-                    quantity=int(pos.qty),
-                    entry_price=float(pos.avg_entry_price),
-                    current_price=float(pos.current_price),
-                    market_value=float(pos.market_value),
-                    unrealized_pnl=float(pos.unrealized_pl),
-                    unrealized_pnl_percent=float(pos.unrealized_plpc) * 100,
-                    status=PositionStatus.OPEN,
-                    entry_time=datetime.now(timezone.utc),  # Alpaca doesn't provide this
-                    stop_loss_price=None,  # Set separately by stop_loss_manager
-                    trailing_stop_price=None
-                )
-                position_list.append(position)
-            
-            logger.info(f"Retrieved {len(position_list)} open positions")
-            return position_list
-            
-        except Exception as e:
-            logger.error(f"Failed to get open positions: {e}")
-            return []
+        positions = self.trading_client.get_all_positions()
+        
+        position_list = []
+        for pos in positions:
+            position = Position(
+                symbol=pos.symbol,
+                quantity=int(pos.qty),
+                entry_price=float(pos.avg_entry_price),
+                current_price=float(pos.current_price),
+                market_value=float(pos.market_value),
+                unrealized_pnl=float(pos.unrealized_pl),
+                unrealized_pnl_percent=float(pos.unrealized_plpc) * 100,
+                status=PositionStatus.OPEN,
+                entry_time=datetime.now(timezone.utc),  # Alpaca doesn't provide this
+                stop_loss_price=None,  # Set separately by stop_loss_manager
+                trailing_stop_price=None
+            )
+            position_list.append(position)
+        
+        logger.info(f"Retrieved {len(position_list)} open positions")
+        return position_list
     
+    @handle_broker_error(retry_strategy=RetryStrategy.IMMEDIATE, max_retries=2)
     def get_position(self, symbol: str) -> Optional[Position]:
         """
         Get a specific position by symbol.
@@ -387,14 +368,13 @@ class AlpacaExecutor:
             )
             
             return position
-            
         except Exception as e:
             # Position not found is not an error
             if "position does not exist" in str(e).lower():
                 return None
-            logger.error(f"Failed to get position for {symbol}: {e}")
-            return None
+            raise
     
+    @handle_broker_error(retry_strategy=RetryStrategy.EXPONENTIAL_BACKOFF, max_retries=3)
     def close_position(self, symbol: str) -> Tuple[bool, Optional[str]]:
         """
         Close an entire position (market sell all shares).
@@ -405,16 +385,12 @@ class AlpacaExecutor:
         Returns:
             Tuple of (success, error_message)
         """
-        try:
-            # Alpaca provides a convenient close_position endpoint
-            self.trading_client.close_position(symbol)
-            logger.info(f"Position closed: {symbol}")
-            return True, None
-        except Exception as e:
-            error_msg = f"Failed to close position {symbol}: {e}"
-            logger.error(error_msg)
-            return False, error_msg
+        # Alpaca provides a convenient close_position endpoint
+        self.trading_client.close_position(symbol)
+        logger.info(f"Position closed: {symbol}")
+        return True, None
     
+    @handle_broker_error(retry_strategy=RetryStrategy.IMMEDIATE, max_retries=2)
     def get_open_orders(self) -> List[Dict]:
         """
         Get all open (pending) orders.
@@ -422,35 +398,31 @@ class AlpacaExecutor:
         Returns:
             List of order dictionaries
         """
-        try:
-            # Create request for open orders only
-            request = GetOrdersRequest(
-                status=QueryOrderStatus.OPEN
-            )
-            orders = self.trading_client.get_orders(request)
-            
-            order_list = []
-            for order in orders:
-                order_dict = {
-                    'order_id': order.id,
-                    'symbol': order.symbol,
-                    'quantity': int(order.qty),
-                    'side': order.side.value,
-                    'type': order.type.value,
-                    'limit_price': float(order.limit_price) if order.limit_price else None,
-                    'stop_price': float(order.stop_price) if order.stop_price else None,
-                    'submitted_at': order.submitted_at,
-                    'time_in_force': order.time_in_force.value
-                }
-                order_list.append(order_dict)
-            
-            logger.info(f"Retrieved {len(order_list)} open orders")
-            return order_list
-            
-        except Exception as e:
-            logger.error(f"Failed to get open orders: {e}")
-            return []
+        # Create request for open orders only
+        request = GetOrdersRequest(
+            status=QueryOrderStatus.OPEN
+        )
+        orders = self.trading_client.get_orders(request)
+        
+        order_list = []
+        for order in orders:
+            order_dict = {
+                'order_id': order.id,
+                'symbol': order.symbol,
+                'quantity': int(order.qty),
+                'side': order.side.value,
+                'type': order.type.value,
+                'limit_price': float(order.limit_price) if order.limit_price else None,
+                'stop_price': float(order.stop_price) if order.stop_price else None,
+                'submitted_at': order.submitted_at,
+                'time_in_force': order.time_in_force.value
+            }
+            order_list.append(order_dict)
+        
+        logger.info(f"Retrieved {len(order_list)} open orders")
+        return order_list
     
+    @handle_broker_error(retry_strategy=RetryStrategy.IMMEDIATE, max_retries=2)
     def cancel_all_orders(self) -> Tuple[bool, Optional[str]]:
         """
         Cancel all open orders.
@@ -458,15 +430,11 @@ class AlpacaExecutor:
         Returns:
             Tuple of (success, error_message)
         """
-        try:
-            self.trading_client.cancel_orders()
-            logger.info("All orders cancelled")
-            return True, None
-        except Exception as e:
-            error_msg = f"Failed to cancel all orders: {e}"
-            logger.error(error_msg)
-            return False, error_msg
+        self.trading_client.cancel_orders()
+        logger.info("All orders cancelled")
+        return True, None
     
+    @handle_broker_error(retry_strategy=RetryStrategy.IMMEDIATE, max_retries=2)
     def get_latest_price(self, symbol: str) -> Optional[float]:
         """
         Get the latest price for a symbol.
@@ -477,26 +445,21 @@ class AlpacaExecutor:
         Returns:
             Latest price or None if unavailable
         """
-        try:
-            # Try to get from open position first (faster)
-            position = self.get_position(symbol)
-            if position:
-                return position.current_price
-            
-            # Otherwise get latest trade from data client
-            # This requires using the data API which we'll keep simple
-            from alpaca.data.requests import StockLatestQuoteRequest
-            request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
-            quote = self.data_client.get_stock_latest_quote(request)
-            
-            if symbol in quote:
-                return float(quote[symbol].ask_price)
-            
-            return None
-            
-        except Exception as e:
-            logger.error(f"Failed to get latest price for {symbol}: {e}")
-            return None
+        # Try to get from open position first (faster)
+        position = self.get_position(symbol)
+        if position:
+            return position.current_price
+        
+        # Otherwise get latest trade from data client
+        # This requires using the data API which we'll keep simple
+        from alpaca.data.requests import StockLatestQuoteRequest
+        request = StockLatestQuoteRequest(symbol_or_symbols=symbol)
+        quote = self.data_client.get_stock_latest_quote(request)
+        
+        if symbol in quote:
+            return float(quote[symbol].ask_price)
+        
+        return None
 
 
 # Example usage

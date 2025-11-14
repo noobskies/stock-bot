@@ -287,6 +287,145 @@ execute_if confidence > 0.70 (manual) or > 0.80 (auto)
 
 ## Design Patterns
 
+### New Patterns (Session 10 Refactoring)
+
+#### Decorator Pattern - Error Handling
+
+**Use Case**: Eliminate duplicate try-catch blocks across 80+ locations
+
+```python
+from src.common.decorators import handle_broker_error, handle_data_error
+
+# Before: Duplicate error handling
+def place_order(symbol, qty):
+    try:
+        order = api.submit_order(symbol, qty)
+        return (True, order.id, None)
+    except Exception as e:
+        logger.error(f"Order failed: {e}")
+        return (False, None, str(e))
+
+# After: Reusable decorator
+@handle_broker_error(retry_strategy=RetryStrategy.EXPONENTIAL_BACKOFF, max_retries=3)
+def place_order(symbol, qty):
+    order = api.submit_order(symbol, qty)
+    return (True, order.id, None)
+```
+
+**Why**: Eliminates 800+ lines of duplicate code, consistent error handling, configurable retry strategies
+
+**Available Decorators**:
+
+- `@handle_broker_error` - Alpaca API calls with retry logic
+- `@handle_data_error` - Data fetching with fallback values
+- `@handle_ml_error` - ML operations with baseline fallback
+- `@handle_trading_error` - Trading operations with circuit breaker
+- `@log_execution_time` - Performance monitoring
+- `@validate_inputs` - Input validation
+
+#### Converter Pattern - Type Transformations
+
+**Use Case**: Eliminate duplicate Alpaca↔internal and Database↔internal conversions
+
+```python
+from src.common.converters import AlpacaConverter, DatabaseConverter
+
+# Before: Duplicate conversion logic in multiple files
+def get_positions(self):
+    alpaca_positions = self.api.list_positions()
+    positions = []
+    for pos in alpaca_positions:
+        positions.append(Position(
+            symbol=pos.symbol,
+            quantity=int(pos.qty),
+            entry_price=float(pos.avg_entry_price),
+            # ... 10+ more lines of conversion
+        ))
+    return positions
+
+# After: Centralized converter
+def get_positions(self):
+    alpaca_positions = self.api.list_positions()
+    return [AlpacaConverter.to_position(pos) for pos in alpaca_positions]
+```
+
+**Why**: Single source of truth for conversions, eliminates 40+ lines of duplicate logic per location
+
+**Available Converters**:
+
+- `AlpacaConverter.to_position()` - Alpaca position → Position
+- `AlpacaConverter.to_order_status()` - Alpaca order → OrderStatus
+- `AlpacaConverter.from_position()` - Position → AlpacaPositionDTO
+- `DatabaseConverter.position_to_dict()` - Position → database dict
+- `DatabaseConverter.dict_to_position()` - Database dict → Position
+
+#### Validator Pattern - Extracted Validation Logic
+
+**Use Case**: Separate validation from calculation (Single Responsibility Principle)
+
+```python
+from src.common.validators import TradeValidator, ValidationResult
+
+# Before: Validation mixed with calculation in RiskCalculator
+def validate_and_calculate(signal, portfolio):
+    # 60 lines of inline validation logic
+    if daily_loss > limit:
+        return False, "Loss limit exceeded"
+    if len(positions) >= max_positions:
+        return False, "Max positions reached"
+    # ... more validation
+    # ... then calculations
+
+# After: Separated concerns
+def calculate_risk(signal, portfolio):
+    # Validation delegated to validator
+    validation = TradeValidator.validate_signal(
+        signal, portfolio_value, positions, daily_loss, config
+    )
+    if not validation.is_valid:
+        return validation.reason
+
+    # Focus on calculations
+    position_size = self._calculate_position_size(signal)
+    return position_size
+```
+
+**Why**: Clearer separation of concerns, reusable validation patterns, better testability
+
+**Available Validators**:
+
+- `TradeValidator.validate_signal()` - Complete trade validation against risk rules
+- `DataValidator.validate_price_bounds()` - Price sanity checks
+- `DataValidator.validate_quantity()` - Quantity validation
+- `PositionValidator.validate_stop_loss()` - Stop loss level validation
+- `PositionValidator.validate_trailing_stop()` - Trailing stop validation
+
+#### Protocol Pattern - Dependency Inversion
+
+**Use Case**: Depend on abstractions, not concrete implementations (SOLID)
+
+```python
+from src.common.protocols import OrderExecutor, DataProvider
+
+# Before: Tight coupling to concrete AlpacaExecutor
+class TradingBot:
+    def __init__(self):
+        self.executor = AlpacaExecutor()  # Hard dependency
+
+# After: Loose coupling via Protocol
+class TradingBot:
+    def __init__(self, executor: OrderExecutor):
+        self.executor = executor  # Any implementation of OrderExecutor
+```
+
+**Why**: Easier testing with mocks, can swap implementations, follows Dependency Inversion Principle
+
+**Available Protocols**:
+
+- `OrderExecutor` - Order execution interface (any broker)
+- `DataProvider` - Market data interface (any data source)
+- `RepositoryProtocol` - Data persistence interface (any storage)
+
 ### 1. Singleton Pattern - Trading Bot Instance
 
 **Use Case**: Ensure only one bot instance runs at a time

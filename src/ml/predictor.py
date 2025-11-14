@@ -18,6 +18,7 @@ from loguru import logger
 from tensorflow import keras
 from src.bot_types.trading_types import ModelPrediction
 from src.data.feature_engineer import FeatureEngineer
+from src.common.decorators import handle_ml_error
 
 
 class LSTMPredictor:
@@ -53,6 +54,7 @@ class LSTMPredictor:
             f"seq_len={sequence_length}, threshold={confidence_threshold}"
         )
     
+    @handle_ml_error()
     def _load_model(self) -> None:
         """Load trained model from disk."""
         if not Path(self.model_path).exists():
@@ -74,11 +76,12 @@ class LSTMPredictor:
         
         logger.info("Model loaded successfully")
     
+    @handle_ml_error()
     def predict_next_day(
         self,
         df: pd.DataFrame,
         symbol: str = "PLTR"
-    ) -> ModelPrediction:
+    ) -> Optional[ModelPrediction]:
         """
         Predict next day price direction.
         
@@ -87,7 +90,7 @@ class LSTMPredictor:
             symbol: Stock symbol
             
         Returns:
-            ModelPrediction with direction, confidence, and probability
+            ModelPrediction with direction, confidence, and probability, or None if prediction fails
         """
         if len(df) < self.sequence_length:
             raise ValueError(
@@ -163,6 +166,7 @@ class LSTMPredictor:
         
         return prediction
     
+    @handle_ml_error()
     def predict_batch(
         self,
         sequences: np.ndarray
@@ -174,7 +178,7 @@ class LSTMPredictor:
             sequences: Array of sequences (n_samples, sequence_length, n_features)
             
         Returns:
-            Tuple of (probabilities, confidences)
+            Tuple of (probabilities, confidences), or empty arrays if prediction fails
         """
         if self.model is None:
             raise ValueError("Model not loaded")
@@ -228,6 +232,7 @@ class LSTMPredictor:
         
         return float(np.clip(confidence, 0.0, 1.0))
     
+    @handle_ml_error()
     def get_feature_importance(
         self,
         df: pd.DataFrame,
@@ -248,7 +253,7 @@ class LSTMPredictor:
             n_samples: Number of samples to use for permutation importance
             
         Returns:
-            Dictionary mapping feature names to importance scores
+            Dictionary mapping feature names to importance scores, or empty dict if fails
         """
         logger.info(f"Calculating feature importance using {method} method")
         
