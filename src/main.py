@@ -161,7 +161,17 @@ class TradingBot:
             logger.info("Loading bot state from database...")
             self._load_bot_state()
             
-            # Step 7: Setup scheduler
+            # Step 7: Sync database with Alpaca reality
+            logger.info("Synchronizing database with Alpaca...")
+            sync_results = self.sync_with_alpaca()
+            if 'error' not in sync_results:
+                logger.info(
+                    f"Sync: {sync_results['positions_synced']} updated, "
+                    f"{sync_results['new_positions_imported']} imported, "
+                    f"{sync_results['trades_archived']} archived"
+                )
+            
+            # Step 8: Setup scheduler
             logger.info("Setting up task scheduler...")
             self._setup_scheduler()
             
@@ -382,6 +392,138 @@ class TradingBot:
                 
         except Exception as e:
             logger.warning(f"Could not load bot state (non-critical): {e}")
+    
+    def sync_with_alpaca(self) -> Dict[str, Any]:
+        """
+        Synchronize database with Alpaca reality (ensures 1:1 data consistency).
+        
+        This method ensures the database always reflects Alpaca's current state:
+        - Imports positions that exist in Alpaca but not in database
+        - Archives database trades that don't exist in Alpaca anymore
+        - Updates position prices and P&L
+        - Ensures perfect synchronization
+        
+        Returns:
+            Dict with sync results:
+                - positions_synced: Number of positions updated/imported
+                - trades_archived: Number of orphaned trades archived
+                - orders_synced: Number of pending orders tracked
+                - new_positions_imported: Manual trades detected
+        """
+        try:
+            logger.info("Starting database-Alpaca synchronization...")
+            
+            # Get current reality from Alpaca
+            alpaca_positions = self.executor.get_open_positions()
+            alpaca_orders = self.executor.get_open_orders()
+            
+            alpaca_symbols = {pos.symbol for pos in alpaca_positions}
+            logger.info(f"Alpaca reality: {len(alpaca_positions)} positions, {len(alpaca_orders)} pending orders")
+            
+            # Get database state
+            db_positions = self.db_manager.get_active_positions()
+            db_symbols = {pos['symbol'] for pos in db_positions}
+            logger.info(f"Database state: {len(db_positions)} active positions")
+            
+            # Track sync results
+            positions_synced = 0
+            positions_imported = 0
+            trades_archived = 0
+            
+            # Step 1: Sync Alpaca positions → Database
+            for alpaca_pos in alpaca_positions:
+                # Check if position exists in database
+                db_pos = self.db_manager.get_position_by_symbol(alpaca_pos.symbol)
+                
+                if db_pos:
+                    # Update existing position with current data
+                    self.db_manager.update_position(alpaca_pos.symbol, {
+                        'current_price': alpaca_pos.current_price,
+                        'market_value': alpaca_pos.market_value,
+                        'unrealized_pnl': alpaca_pos.unrealized_pnl,
+                        'unrealized_pnl_percent': alpaca_pos.unrealized_pnl_percent
+                    })
+                    positions_synced += 1
+                    logger.debug(f"Updated position: {alpaca_pos.symbol}")
+                else:
+                    # Position exists in Alpaca but not database
+                    # This means it was opened manually or database was cleared
+                    logger.info(f"Importing new position from Alpaca: {alpaca_pos.symbol}")
+                    
+                    # Create position in database
+                    self.db_manager.save_position(
+                        symbol=alpaca_pos.symbol,
+                        quantity=alpaca_pos.quantity,
+                        entry_price=alpaca_pos.entry_price,
+                        current_price=alpaca_pos.current_price,
+                        side='buy',  # Assume long position
+                        status='open'
+                    )
+                    
+                    # Create corresponding trade record
+                    self.db_manager.save_trade(
+                        symbol=alpaca_pos.symbol,
+                        action='buy',
+                        quantity=alpaca_pos.quantity,
+                        entry_price=alpaca_pos.entry_price,
+                        stop_loss=alpaca_pos.entry_price * (1 - self.config.stop_loss_percent),
+                        status='open',
+                        confidence=0.0,  # Manual trade, no ML confidence
+                        reasoning="Imported from Alpaca (manual trade or external system)"
+                    )
+                    
+                    positions_imported += 1
+            
+            # Step 2: Archive database positions that don't exist in Alpaca
+            for db_pos in db_positions:
+                if db_pos['symbol'] not in alpaca_symbols:
+                    # Position in database but not in Alpaca = was closed externally
+                    logger.info(f"Archiving orphaned position: {db_pos['symbol']}")
+                    
+                    # Get the trade record
+                    trades = self.db_manager.get_trade_history(
+                        symbol=db_pos['symbol'],
+                        status='open'
+                    )
+                    
+                    # Archive each orphaned trade
+                    for trade in trades:
+                        self.db_manager.update_trade_status(
+                            trade_id=trade['id'],
+                            status='archived',
+                            exit_price=db_pos.get('current_price', trade['entry_price']),
+                            pnl=0.0,  # Unknown P&L for external close
+                            pnl_percent=0.0
+                        )
+                        trades_archived += 1
+                    
+                    # Delete position from database
+                    self.db_manager.delete_position(db_pos['symbol'])
+            
+            # Step 3: Log sync summary
+            sync_results = {
+                'positions_synced': positions_synced,
+                'new_positions_imported': positions_imported,
+                'trades_archived': trades_archived,
+                'pending_orders': len(alpaca_orders),
+                'timestamp': datetime.now().isoformat()
+            }
+            
+            logger.success(
+                f"Sync complete: {positions_synced} updated, "
+                f"{positions_imported} imported, {trades_archived} archived"
+            )
+            
+            return sync_results
+            
+        except Exception as e:
+            logger.exception(f"Error during Alpaca sync: {e}")
+            return {
+                'error': str(e),
+                'positions_synced': 0,
+                'new_positions_imported': 0,
+                'trades_archived': 0
+            }
     
     def _setup_scheduler(self):
         """Setup APScheduler for automated tasks."""

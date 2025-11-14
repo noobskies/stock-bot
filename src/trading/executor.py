@@ -24,7 +24,7 @@ from alpaca.trading.requests import (
     LimitOrderRequest,
     GetOrdersRequest,
 )
-from alpaca.trading.enums import OrderSide, TimeInForce, OrderStatus as AlpacaOrderStatus
+from alpaca.trading.enums import OrderSide, TimeInForce, OrderStatus as AlpacaOrderStatus, QueryOrderStatus
 from alpaca.data.historical import StockHistoricalDataClient
 from loguru import logger
 
@@ -425,7 +425,7 @@ class AlpacaExecutor:
         try:
             # Create request for open orders only
             request = GetOrdersRequest(
-                status=AlpacaOrderStatus.OPEN
+                status=QueryOrderStatus.OPEN
             )
             orders = self.trading_client.get_orders(request)
             

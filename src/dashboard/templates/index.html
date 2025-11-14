@@ -106,7 +106,15 @@
   <div class="section">
     <div class="section-header">
       <h3>Active Positions</h3>
-      <button class="btn btn-sm" onclick="refreshPositions()">Refresh</button>
+      <div>
+        <button class="btn btn-sm btn-primary" onclick="showPlaceOrderModal()">
+          Place Order
+        </button>
+        <button class="btn btn-sm btn-danger" onclick="closeAllPositions()">
+          Close All
+        </button>
+        <button class="btn btn-sm" onclick="refreshPositions()">Refresh</button>
+      </div>
     </div>
     <div class="table-container">
       <table class="data-table">
@@ -125,6 +133,35 @@
         <tbody id="positionsTable">
           <tr>
             <td colspan="8" class="no-data">No active positions</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Pending Orders -->
+  <div class="section">
+    <div class="section-header">
+      <h3>Pending Orders</h3>
+      <span class="badge" id="pendingOrdersCount">0</span>
+    </div>
+    <div class="table-container">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Symbol</th>
+            <th>Side</th>
+            <th>Type</th>
+            <th>Quantity</th>
+            <th>Price</th>
+            <th>Time in Force</th>
+            <th>Submitted</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="pendingOrdersTable">
+          <tr>
+            <td colspan="8" class="no-data">No pending orders</td>
           </tr>
         </tbody>
       </table>
@@ -231,9 +268,193 @@
   async function loadDashboard() {
     await Promise.all([
       loadPortfolio(),
+      loadPendingOrders(),
       loadPendingSignals(),
       updateBotStatus(),
     ]);
+  }
+
+  async function loadPendingOrders() {
+    try {
+      const response = await fetch("/api/orders");
+      const data = await response.json();
+
+      if (data.error) {
+        return;
+      }
+
+      const orders = data.orders || [];
+      document.getElementById("pendingOrdersCount").textContent = orders.length;
+
+      const tbody = document.getElementById("pendingOrdersTable");
+
+      if (orders.length === 0) {
+        tbody.innerHTML =
+          '<tr><td colspan="8" class="no-data">No pending orders</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = orders
+        .map(
+          (order) => `
+            <tr>
+                <td><strong>${order.symbol}</strong></td>
+                <td><span class="badge badge-${
+                  order.side
+                }">${order.side.toUpperCase()}</span></td>
+                <td>${order.type}</td>
+                <td>${order.quantity}</td>
+                <td>${
+                  order.limit_price
+                    ? formatCurrency(order.limit_price)
+                    : "Market"
+                }</td>
+                <td>${order.time_in_force}</td>
+                <td>${new Date(order.submitted_at).toLocaleString()}</td>
+                <td>
+                    <button class="btn btn-sm btn-danger" onclick="cancelOrder('${
+                      order.id
+                    }')">Cancel</button>
+                </td>
+            </tr>
+        `
+        )
+        .join("");
+    } catch (error) {
+      console.error("Error loading pending orders:", error);
+    }
+  }
+
+  async function cancelOrder(orderId) {
+    if (!confirm(`Cancel order ${orderId}?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}/cancel`, {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showToast("Order cancelled", "info");
+        loadDashboard();
+      } else {
+        showToast(data.error || "Failed to cancel order", "error");
+      }
+    } catch (error) {
+      showToast("Error cancelling order", "error");
+    }
+  }
+
+  async function closePosition(symbol) {
+    if (!confirm(`Close position for ${symbol}?`)) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/positions/${symbol}/close`, {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showToast(`Position ${symbol} closed`, "success");
+        loadDashboard();
+      } else {
+        showToast(data.error || "Failed to close position", "error");
+      }
+    } catch (error) {
+      showToast("Error closing position", "error");
+    }
+  }
+
+  async function closeAllPositions() {
+    if (
+      !confirm(
+        "Close ALL positions? This will close all open positions immediately."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/positions/close-all", {
+        method: "POST",
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showToast(data.message, "success");
+        loadDashboard();
+      } else {
+        showToast(data.error || "Failed to close all positions", "error");
+      }
+    } catch (error) {
+      showToast("Error closing all positions", "error");
+    }
+  }
+
+  function showPlaceOrderModal() {
+    const symbol = prompt("Enter symbol (e.g., PLTR):");
+    if (!symbol) return;
+
+    const side = prompt("Enter side (buy/sell):").toLowerCase();
+    if (!side || (side !== "buy" && side !== "sell")) {
+      showToast("Invalid side. Must be 'buy' or 'sell'", "error");
+      return;
+    }
+
+    const quantity = parseInt(prompt("Enter quantity:"));
+    if (!quantity || quantity <= 0) {
+      showToast("Invalid quantity", "error");
+      return;
+    }
+
+    const type = prompt("Enter order type (market/limit):").toLowerCase();
+    if (!type || (type !== "market" && type !== "limit")) {
+      showToast("Invalid type. Must be 'market' or 'limit'", "error");
+      return;
+    }
+
+    let limitPrice = null;
+    if (type === "limit") {
+      limitPrice = parseFloat(prompt("Enter limit price:"));
+      if (!limitPrice || limitPrice <= 0) {
+        showToast("Invalid limit price", "error");
+        return;
+      }
+    }
+
+    placeOrder({
+      symbol: symbol.toUpperCase(),
+      side,
+      quantity,
+      type,
+      limit_price: limitPrice,
+    });
+  }
+
+  async function placeOrder(orderData) {
+    try {
+      const response = await fetch("/api/orders/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(orderData),
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        showToast(data.message, "success");
+        loadDashboard();
+      } else {
+        showToast(data.error || "Failed to place order", "error");
+      }
+    } catch (error) {
+      showToast("Error placing order", "error");
+    }
   }
 
   async function loadPortfolio() {

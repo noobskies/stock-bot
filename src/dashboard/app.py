@@ -342,9 +342,9 @@ def get_signal_history():
                 'signal_type': signal['signal_type'],
                 'confidence': signal['confidence'],
                 'status': signal['status'],
-                'predicted_price': signal['predicted_price'],
-                'current_price': signal['current_price'],
-                'timestamp': signal['timestamp'].isoformat() if signal['timestamp'] else None
+                'predicted_price': signal.get('predicted_price', 0),
+                'current_price': signal.get('current_price', 0),
+                'timestamp': signal.get('timestamp').isoformat() if signal.get('timestamp') else None
             })
         
         return jsonify({'signals': formatted_signals})
@@ -359,19 +359,23 @@ def get_signal_history():
 
 @app.route('/api/trades/history')
 def get_trade_history():
-    """Get trade history with optional filters."""
+    """Get trade history with optional filters (excludes archived by default)."""
     try:
         # Get query parameters
         symbol = request.args.get('symbol')
         days = request.args.get('days', 30, type=int)
         status = request.args.get('status')
+        include_archived = request.args.get('include_archived', 'false').lower() == 'true'
         
-        # Get trades from database
+        # Get trades from database (no days parameter in database method)
         trades = db_manager.get_trade_history(
             symbol=symbol,
-            days=days,
             status=status
         )
+        
+        # Filter out archived trades unless explicitly requested
+        if not include_archived:
+            trades = [t for t in trades if t.get('status') != 'archived']
         
         formatted_trades = []
         for trade in trades:
@@ -424,6 +428,304 @@ def get_trade_performance():
         })
     except Exception as e:
         logger.error(f"Error getting trade performance: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# API ROUTES - ORDERS
+# ============================================================================
+
+@app.route('/api/orders', methods=['GET'])
+def get_orders():
+    """Get all pending orders from Alpaca."""
+    try:
+        bot = get_bot_instance()
+        if not bot or not bot.executor:
+            return jsonify({'orders': []})
+        
+        # Get open orders from Alpaca
+        orders = bot.executor.get_open_orders()
+        
+        # Format for frontend
+        formatted_orders = []
+        for order in orders:
+            formatted_orders.append({
+                'id': order['order_id'],
+                'symbol': order['symbol'],
+                'side': order['side'],
+                'type': order['type'],
+                'quantity': order['quantity'],
+                'limit_price': order['limit_price'],
+                'stop_price': order['stop_price'],
+                'time_in_force': order['time_in_force'],
+                'submitted_at': order['submitted_at'].isoformat() if order['submitted_at'] else None
+            })
+        
+        return jsonify({'orders': formatted_orders})
+    except Exception as e:
+        logger.error(f"Error getting orders: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/orders/<order_id>/cancel', methods=['POST'])
+def cancel_order(order_id: str):
+    """Cancel a pending order."""
+    try:
+        bot = get_bot_instance()
+        if not bot or not bot.executor:
+            return jsonify({'error': 'Bot not available'}), 500
+        
+        success, error = bot.executor.cancel_order(order_id)
+        
+        if success:
+            logger.info(f"Order {order_id} cancelled via dashboard")
+            return jsonify({
+                'success': True,
+                'message': f'Order {order_id} cancelled successfully'
+            })
+        else:
+            return jsonify({'error': error}), 500
+            
+    except Exception as e:
+        logger.error(f"Error cancelling order {order_id}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/orders/create', methods=['POST'])
+def create_order():
+    """Place a manual order (market or limit)."""
+    try:
+        bot = get_bot_instance()
+        if not bot or not bot.executor:
+            return jsonify({'error': 'Bot not available'}), 500
+        
+        data = request.get_json()
+        
+        # Validate required fields
+        required = ['symbol', 'side', 'quantity', 'type']
+        for field in required:
+            if field not in data:
+                return jsonify({'error': f'Missing required field: {field}'}), 400
+        
+        symbol = data['symbol'].upper()
+        side = data['side'].lower()
+        quantity = int(data['quantity'])
+        order_type = data['type'].lower()
+        time_in_force = data.get('time_in_force', 'day')
+        
+        # Validate side
+        if side not in ['buy', 'sell']:
+            return jsonify({'error': 'Side must be "buy" or "sell"'}), 400
+        
+        # Validate quantity
+        if quantity <= 0:
+            return jsonify({'error': 'Quantity must be positive'}), 400
+        
+        # Risk validation for BUY orders
+        if side == 'buy' and bot.risk_calculator:
+            # Get current portfolio state
+            account = bot.executor.get_account()
+            positions = bot.executor.get_open_positions()
+            
+            # Check daily loss limit
+            daily_pnl_percent = ((account['equity'] - account['last_equity']) / account['last_equity'] * 100) if account['last_equity'] > 0 else 0
+            if daily_pnl_percent <= -5.0:
+                return jsonify({
+                    'error': 'Circuit breaker active - daily loss limit exceeded (-5%)'
+                }), 400
+            
+            # Check max positions
+            if len(positions) >= 5:
+                return jsonify({
+                    'error': 'Maximum positions reached (5/5)'
+                }), 400
+            
+            # Check buying power
+            estimated_cost = quantity * (data.get('limit_price', 0) or bot.executor.get_latest_price(symbol) or 0)
+            if estimated_cost > account['buying_power']:
+                return jsonify({
+                    'error': f'Insufficient buying power (${account["buying_power"]:,.2f} available)'
+                }), 400
+        
+        # Place order based on type
+        if order_type == 'market':
+            success, order_id, error = bot.executor.place_market_order(
+                symbol, quantity, side, time_in_force
+            )
+        elif order_type == 'limit':
+            limit_price = data.get('limit_price')
+            if not limit_price:
+                return jsonify({'error': 'Limit price required for limit orders'}), 400
+            
+            success, order_id, error = bot.executor.place_limit_order(
+                symbol, quantity, side, float(limit_price), time_in_force
+            )
+        else:
+            return jsonify({'error': 'Order type must be "market" or "limit"'}), 400
+        
+        if success:
+            logger.info(f"Manual order placed via dashboard: {side.upper()} {quantity} {symbol}")
+            return jsonify({
+                'success': True,
+                'order_id': order_id,
+                'message': f'{order_type.capitalize()} order placed: {side.upper()} {quantity} {symbol}'
+            })
+        else:
+            return jsonify({'error': error}), 500
+            
+    except Exception as e:
+        logger.error(f"Error creating order: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+# ============================================================================
+# API ROUTES - POSITIONS
+# ============================================================================
+
+@app.route('/api/positions/<symbol>/close', methods=['POST'])
+def close_position(symbol: str):
+    """Close a specific position."""
+    try:
+        bot = get_bot_instance()
+        if not bot or not bot.executor:
+            return jsonify({'error': 'Bot not available'}), 500
+        
+        symbol = symbol.upper()
+        
+        # Check position exists
+        position = bot.executor.get_position(symbol)
+        if not position:
+            return jsonify({'error': f'No open position found for {symbol}'}), 404
+        
+        # Close position via Alpaca
+        success, error = bot.executor.close_position(symbol)
+        
+        if success:
+            logger.info(f"Position closed via dashboard: {symbol}")
+            return jsonify({
+                'success': True,
+                'message': f'Position closed: {symbol}'
+            })
+        else:
+            return jsonify({'error': error}), 500
+            
+    except Exception as e:
+        logger.error(f"Error closing position {symbol}: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/positions/close-all', methods=['POST'])
+def close_all_positions():
+    """Close all open positions."""
+    try:
+        bot = get_bot_instance()
+        if not bot or not bot.executor:
+            return jsonify({'error': 'Bot not available'}), 500
+        
+        # Get all positions
+        positions = bot.executor.get_open_positions()
+        
+        if not positions:
+            return jsonify({
+                'success': True,
+                'message': 'No open positions to close',
+                'closed_count': 0
+            })
+        
+        # Close each position
+        closed = []
+        failed = []
+        
+        for pos in positions:
+            success, error = bot.executor.close_position(pos.symbol)
+            if success:
+                closed.append(pos.symbol)
+            else:
+                failed.append({'symbol': pos.symbol, 'error': error})
+        
+        logger.info(f"Closed {len(closed)} positions via dashboard: {', '.join(closed)}")
+        
+        if failed:
+            return jsonify({
+                'success': False,
+                'message': f'Closed {len(closed)}/{len(positions)} positions',
+                'closed': closed,
+                'failed': failed
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'message': f'All positions closed ({len(closed)} total)',
+            'closed': closed
+        })
+        
+    except Exception as e:
+        logger.error(f"Error closing all positions: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/positions/<symbol>/modify', methods=['POST'])
+def modify_position(symbol: str):
+    """Modify position parameters (stop loss, trailing stop)."""
+    try:
+        bot = get_bot_instance()
+        if not bot or not bot.executor or not bot.stop_loss_manager:
+            return jsonify({'error': 'Bot not available'}), 500
+        
+        symbol = symbol.upper()
+        data = request.get_json()
+        
+        # Check position exists
+        position = bot.executor.get_position(symbol)
+        if not position:
+            return jsonify({'error': f'No open position found for {symbol}'}), 404
+        
+        # Update stop loss if provided
+        if 'stop_loss' in data:
+            new_stop = float(data['stop_loss'])
+            
+            # Validate stop loss is below current price
+            if new_stop >= position.current_price:
+                return jsonify({
+                    'error': f'Stop loss (${new_stop:.2f}) must be below current price (${position.current_price:.2f})'
+                }), 400
+            
+            # Update stop loss in manager
+            bot.stop_loss_manager.set_stop_loss(position, new_stop)
+            
+            # Update in database
+            db_manager.update_position(symbol, {'stop_loss': new_stop})
+            
+            logger.info(f"Stop loss updated for {symbol}: ${new_stop:.2f}")
+        
+        # Update trailing stop if provided
+        if 'trailing_stop_percent' in data:
+            trail_percent = float(data['trailing_stop_percent'])
+            
+            # Validate percentage
+            if trail_percent <= 0 or trail_percent > 20:
+                return jsonify({
+                    'error': 'Trailing stop percent must be between 0 and 20'
+                }), 400
+            
+            # Calculate trailing stop price
+            trailing_stop = position.current_price * (1 - trail_percent / 100)
+            
+            # Update in manager
+            bot.stop_loss_manager.update_trailing_stop(symbol, trailing_stop)
+            
+            # Update in database
+            db_manager.update_position(symbol, {'trailing_stop': trailing_stop})
+            
+            logger.info(f"Trailing stop updated for {symbol}: ${trailing_stop:.2f} ({trail_percent}%)")
+        
+        return jsonify({
+            'success': True,
+            'message': f'Position {symbol} updated successfully'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error modifying position {symbol}: {e}")
         return jsonify({'error': str(e)}), 500
 
 
@@ -574,6 +876,36 @@ def emergency_stop():
         })
     except Exception as e:
         logger.error(f"Error during emergency stop: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/bot/sync', methods=['POST'])
+def sync_with_alpaca():
+    """Manually trigger database-Alpaca synchronization."""
+    try:
+        bot = get_bot_instance()
+        if not bot or not bot.executor:
+            return jsonify({'error': 'Bot not available or not initialized'}), 500
+        
+        # Run sync
+        sync_results = bot.sync_with_alpaca()
+        
+        if 'error' in sync_results:
+            return jsonify({
+                'success': False,
+                'error': sync_results['error']
+            }), 500
+        
+        logger.info("Manual sync triggered via dashboard")
+        
+        return jsonify({
+            'success': True,
+            'message': 'Database synchronized with Alpaca',
+            'results': sync_results
+        })
+        
+    except Exception as e:
+        logger.error(f"Error during manual sync: {e}")
         return jsonify({'error': str(e)}), 500
 
 
