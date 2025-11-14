@@ -79,7 +79,13 @@ class BotCoordinator:
             logger.info("Creating orchestrators...")
             self.trading_cycle = TradingCycleOrchestrator(modules, config, db)
             self.position_monitor = PositionMonitorOrchestrator(modules, config, db)
-            self.risk_monitor = RiskMonitorOrchestrator(modules['portfolio_monitor'], config, db)
+            self.risk_monitor = RiskMonitorOrchestrator(
+                modules['portfolio_monitor'], 
+                config, 
+                db,
+                position_manager=modules['position_manager'],
+                executor=modules['executor']
+            )
             self.market_close = MarketCloseHandler(modules, config, db)
             logger.debug("Orchestrators created successfully")
             

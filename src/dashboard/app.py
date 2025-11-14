@@ -176,7 +176,7 @@ def get_portfolio():
         for pos in alpaca_positions:
             # Position is already a dataclass with proper types
             unrealized_pnl = pos.unrealized_pnl
-            position_value = pos.market_value
+            position_value = pos.quantity * pos.current_price  # Calculate market value
             entry_price = pos.entry_price
             quantity = pos.quantity
             

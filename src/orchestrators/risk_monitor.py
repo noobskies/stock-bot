@@ -26,7 +26,7 @@ class RiskMonitorOrchestrator:
     Does NOT handle position monitoring or trading.
     """
     
-    def __init__(self, portfolio_monitor, config: BotConfig, db: DatabaseManager):
+    def __init__(self, portfolio_monitor, config: BotConfig, db: DatabaseManager, position_manager=None, executor=None):
         """
         Initialize risk monitor orchestrator.
         
@@ -34,8 +34,12 @@ class RiskMonitorOrchestrator:
             portfolio_monitor: PortfolioMonitor instance
             config: Bot configuration
             db: Database manager instance
+            position_manager: PositionManager instance (optional, for getting current positions)
+            executor: AlpacaExecutor instance (optional, for getting account info)
         """
         self.portfolio_monitor = portfolio_monitor
+        self.position_manager = position_manager
+        self.executor = executor
         self.config = config
         self.db = db
     
@@ -52,24 +56,36 @@ class RiskMonitorOrchestrator:
             bool: True if limits OK, False if circuit breaker triggered
         """
         try:
-            # Get current risk metrics
-            risk_metrics = self.portfolio_monitor.get_risk_metrics()
+            # Get current portfolio state first
+            if self.position_manager and self.executor:
+                current_positions = self.position_manager.get_all_positions()
+                account_info = self.executor.get_account_info()
+                portfolio_state = self.portfolio_monitor.update_portfolio_state(
+                    current_positions=current_positions,
+                    cash_available=account_info['cash']
+                )
+                # Get risk metrics from portfolio state
+                risk_metrics = self.portfolio_monitor.get_risk_metrics(portfolio_state)
+            else:
+                # Fallback: try to get risk metrics without state (will fail, but log it)
+                logger.warning("RiskMonitor missing position_manager or executor - cannot get accurate risk metrics")
+                return True  # Skip risk check if we can't get proper data
             
             # Check daily loss limit (5%)
             daily_loss_limit = self.config.daily_loss_limit  # 0.05 = 5%
-            if risk_metrics['daily_pnl_percent'] <= -daily_loss_limit:
+            if risk_metrics.daily_pnl_percent <= -daily_loss_limit:
                 logger.critical(
                     f"CIRCUIT BREAKER TRIGGERED: Daily loss limit exceeded "
-                    f"({risk_metrics['daily_pnl_percent']:.2%})"
+                    f"({risk_metrics.daily_pnl_percent:.2%})"
                 )
                 return self.activate_circuit_breaker()
             
             # Log risk metrics periodically
-            if risk_metrics['position_count'] > 0:
+            if risk_metrics.positions_used > 0:
                 logger.info(
-                    f"Risk metrics: positions={risk_metrics['position_count']}, "
-                    f"exposure={risk_metrics['total_exposure_percent']:.1%}, "
-                    f"daily_pnl={risk_metrics['daily_pnl_percent']:.2%}"
+                    f"Risk metrics: positions={risk_metrics.positions_used}, "
+                    f"exposure={risk_metrics.total_exposure_percent:.1%}, "
+                    f"daily_pnl={risk_metrics.daily_pnl_percent:.2%}"
                 )
             
             return True
