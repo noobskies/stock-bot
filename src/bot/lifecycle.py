@@ -397,15 +397,15 @@ class BotLifecycle:
             # Step 1: Sync Alpaca positions → Database
             for alpaca_pos in alpaca_positions:
                 db_pos = self.db_manager.get_position_by_symbol(alpaca_pos.symbol)
-                
+
                 if db_pos:
-                    # Update existing position
-                    self.db_manager.update_position(alpaca_pos.symbol, {
-                        'current_price': alpaca_pos.current_price,
-                        'market_value': alpaca_pos.market_value,
-                        'unrealized_pnl': alpaca_pos.unrealized_pnl,
-                        'unrealized_pnl_percent': alpaca_pos.unrealized_pnl_percent
-                    })
+                    # Update existing position using correct repository method
+                    self.db_manager.positions.update_position_price(
+                        symbol=alpaca_pos.symbol,
+                        current_price=alpaca_pos.current_price,
+                        unrealized_pnl=alpaca_pos.unrealized_pnl,
+                        unrealized_pnl_percent=alpaca_pos.unrealized_pnl_percent
+                    )
                     positions_synced += 1
                 else:
                     # Import new position

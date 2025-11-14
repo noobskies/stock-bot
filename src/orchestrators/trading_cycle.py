@@ -6,6 +6,7 @@ prediction generation to signal execution.
 """
 
 from typing import Dict, Any
+from datetime import datetime, timedelta
 from loguru import logger
 
 from src.bot_types.trading_types import BotConfig, TradingSignal
@@ -85,9 +86,12 @@ class TradingCycleOrchestrator:
             
             # Step 1: Fetch market data
             logger.debug(f"Fetching market data for {symbol}...")
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=90)
             historical_data = self.data_fetcher.fetch_historical_data(
                 symbol=symbol,
-                days=90  # 90 days for technical indicators
+                start_date=start_date,
+                end_date=end_date
             )
             
             if historical_data is None or historical_data.empty:

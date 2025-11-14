@@ -326,13 +326,12 @@ class AlpacaExecutor:
                 quantity=int(pos.qty),
                 entry_price=float(pos.avg_entry_price),
                 current_price=float(pos.current_price),
-                market_value=float(pos.market_value),
+                stop_loss=0.0,  # Set separately by stop_loss_manager
                 unrealized_pnl=float(pos.unrealized_pl),
-                unrealized_pnl_percent=float(pos.unrealized_plpc) * 100,
                 status=PositionStatus.OPEN,
                 entry_time=datetime.now(timezone.utc),  # Alpaca doesn't provide this
-                stop_loss_price=None,  # Set separately by stop_loss_manager
-                trailing_stop_price=None
+                trailing_stop=None,  # Set separately by stop_loss_manager
+                unrealized_pnl_percent=float(pos.unrealized_plpc) * 100
             )
             position_list.append(position)
         
@@ -358,13 +357,12 @@ class AlpacaExecutor:
                 quantity=int(pos.qty),
                 entry_price=float(pos.avg_entry_price),
                 current_price=float(pos.current_price),
-                market_value=float(pos.market_value),
+                stop_loss=0.0,  # Set separately by stop_loss_manager
                 unrealized_pnl=float(pos.unrealized_pl),
-                unrealized_pnl_percent=float(pos.unrealized_plpc) * 100,
                 status=PositionStatus.OPEN,
                 entry_time=datetime.now(timezone.utc),
-                stop_loss_price=None,
-                trailing_stop_price=None
+                trailing_stop=None,  # Set separately by stop_loss_manager
+                unrealized_pnl_percent=float(pos.unrealized_plpc) * 100
             )
             
             return position

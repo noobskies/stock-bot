@@ -93,8 +93,8 @@ def settings_page():
 def get_status():
     """Get current bot status and basic info."""
     try:
-        # Get bot state from database instead of bot instance
-        bot_state = db_manager.get_bot_state()
+        # Get bot state from database using new repository pattern
+        bot_state = db_manager.bot_state.get_bot_state()
         
         if not bot_state:
             return jsonify({
@@ -176,12 +176,12 @@ def get_portfolio():
         for pos in alpaca_positions:
             # Position is already a dataclass with proper types
             unrealized_pnl = pos.unrealized_pnl
-            position_value = pos.market_value
+            position_value = pos.quantity * pos.current_price  # Calculate market value
             entry_price = pos.entry_price
             quantity = pos.quantity
             
             # Get stop loss info from database if available
-            db_position = db_manager.get_position_by_symbol(pos.symbol)
+            db_position = db_manager.positions.get_position_by_symbol(pos.symbol)
             stop_loss = db_position.get('stop_loss') if db_position else None
             trailing_stop = db_position.get('trailing_stop') if db_position else None
             
@@ -205,7 +205,7 @@ def get_portfolio():
         daily_pnl_percent = (daily_pnl / alpaca_account['last_equity'] * 100) if alpaca_account['last_equity'] > 0 else 0
         
         # Get performance metrics from database (historical data)
-        perf_metrics = db_manager.get_performance_summary(days=30)
+        perf_metrics = db_manager.analytics.get_performance_summary(days=30)
         
         return jsonify({
             'portfolio': {
