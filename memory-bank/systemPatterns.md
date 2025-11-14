@@ -985,6 +985,300 @@ logger.add(
 - Follow library-specific best practices
 - Reduce debugging time from API misuse
 
+## Future Architecture: React Dashboard Migration (Phase 11 - Planned)
+
+### Overview
+
+A comprehensive implementation plan has been created for migrating the Flask-templated dashboard to a modern React + TypeScript + shadcn/ui frontend. This is a **frontend-only migration** - the Flask API backend (18 REST endpoints) will remain unchanged.
+
+**Documentation**: Complete implementation plan at `implementation_plan.md`
+
+### Planned Frontend Architecture
+
+```
+React SPA (Port 3000)
+├── Vite Dev Server with Flask API Proxy
+├── React 18 + TypeScript 5.6
+├── React Router for navigation
+├── TanStack Query (React Query) for server state
+├── Zustand for UI state
+└── shadcn/ui + Tailwind CSS for components
+
+↓ (Proxied API calls)
+
+Flask API Backend (Port 5000) - UNCHANGED
+├── 18 REST endpoints
+├── Dashboard routes
+└── Bot control and data APIs
+```
+
+### Key Design Principles for React Migration
+
+1. **Frontend-Only Scope**: Flask API remains completely unchanged
+2. **DRY & SOLID**: Apply same principles as Python backend refactoring
+3. **Type Safety**: Full TypeScript coverage matching Flask API responses
+4. **Component Composition**: Small, focused components following Single Responsibility
+5. **Separation of Concerns**: Clear boundaries between data, logic, and presentation
+
+### React Architecture Patterns (Planned)
+
+#### Component Architecture
+
+All components will use functional components with hooks (no classes):
+
+```typescript
+export function ComponentName({ prop1, prop2 }: ComponentProps) {
+  // 1. Query hooks (server state via React Query)
+  const { data, isLoading } = usePortfolio();
+
+  // 2. Mutation hooks
+  const { mutate: approveSignal } = useApproveSignal();
+
+  // 3. UI state (Zustand)
+  const mode = useBotStore((state) => state.mode);
+
+  // 4. Event handlers
+  const handleApprove = useCallback(() => {
+    approveSignal(signalId);
+  }, [signalId, approveSignal]);
+
+  // 5. Render
+  return <div>...</div>;
+}
+```
+
+**Benefits**:
+
+- Hooks replace class lifecycle methods
+- Composition over inheritance
+- No "this" binding issues
+- Better tree-shaking and optimization
+- Aligns with SOLID principles (functions are naturally single-purpose)
+
+#### State Management Strategy
+
+**Server State** (React Query/TanStack Query):
+
+- Manages all API data, caching, refetching
+- Built-in loading/error states
+- Automatic cache invalidation on mutations
+- Example: Portfolio data, positions, signals, trades
+
+**Client State** (Zustand):
+
+- UI preferences (dark mode, sidebar state)
+- Selected filters
+- Trading mode preference
+- Minimal boilerplate, no provider wrapper
+
+**Local State** (useState):
+
+- Form inputs
+- Toggle states
+- Component-specific ephemeral state
+
+#### API Layer Pattern (Planned)
+
+Centralized API client following DRY principle:
+
+```typescript
+// src/lib/api/client.ts
+export const apiClient = {
+  get: <T>(endpoint: string) => Promise<T>,
+  post: <T>(endpoint: string, data: any) => Promise<T>,
+  // ... standardized error handling, retry logic
+};
+
+// src/lib/api/portfolio.ts
+export const getPortfolio = (): Promise<PortfolioResponse> => {
+  return apiClient.get("/api/portfolio");
+};
+
+// src/lib/hooks/usePortfolio.ts
+export function usePortfolio() {
+  return useQuery({
+    queryKey: ["portfolio"],
+    queryFn: getPortfolio,
+    refetchInterval: 30000, // 30s auto-refresh
+  });
+}
+```
+
+**Benefits**:
+
+- Single source of truth for API calls (DRY)
+- Consistent error handling across all endpoints
+- Easy to mock for testing
+- Type-safe with TypeScript
+
+#### Component Categories (Planned)
+
+1. **Layout Components** - Structure only
+
+   - AppLayout, Navbar
+   - Responsible for page structure, not business logic
+
+2. **Feature Components** - Business logic, data-driven
+
+   - PortfolioSummary, PositionsTable, BotControls
+   - Fetch data with hooks, compose presentation components
+
+3. **UI Components** (shadcn/ui) - Primitive, reusable
+
+   - Button, Card, Table, Dialog
+   - Owned code (copied into project), fully customizable
+
+4. **Shared Components** - Cross-cutting concerns
+   - LoadingSpinner, ErrorMessage, EmptyState, ConfirmDialog
+   - Reusable across multiple features
+
+#### File Organization (Planned)
+
+```
+dashboard/
+├── src/
+│   ├── types/              # TypeScript type definitions
+│   │   ├── portfolio.ts    # Portfolio domain types
+│   │   ├── trading.ts      # Trading domain types
+│   │   ├── bot.ts          # Bot control types
+│   │   └── api.ts          # API response types
+│   │
+│   ├── lib/
+│   │   ├── api/            # API client layer
+│   │   │   ├── client.ts   # Base HTTP client
+│   │   │   ├── portfolio.ts
+│   │   │   ├── trading.ts
+│   │   │   ├── signals.ts
+│   │   │   └── bot.ts
+│   │   │
+│   │   ├── hooks/          # Custom React hooks
+│   │   │   ├── usePortfolio.ts
+│   │   │   ├── useSignals.ts
+│   │   │   ├── useTrades.ts
+│   │   │   └── useBotControl.ts
+│   │   │
+│   │   └── utils/          # Utility functions
+│   │       └── format.ts   # Formatting helpers
+│   │
+│   ├── components/
+│   │   ├── layout/         # Layout components
+│   │   ├── shared/         # Shared components
+│   │   ├── dashboard/      # Dashboard features
+│   │   └── ui/             # shadcn/ui primitives
+│   │
+│   ├── pages/              # Page components
+│   │   ├── DashboardPage.tsx
+│   │   ├── TradesPage.tsx
+│   │   ├── SignalsPage.tsx
+│   │   └── SettingsPage.tsx
+│   │
+│   ├── store/              # Zustand stores
+│   │   └── bot-store.ts
+│   │
+│   ├── App.tsx             # Root component with routing
+│   └── main.tsx            # React entry point
+│
+├── vite.config.ts          # Vite + Flask proxy config
+├── tailwind.config.ts      # Tailwind + shadcn/ui theme
+└── package.json            # Dependencies
+```
+
+### Technology Stack (Planned)
+
+**Core**:
+
+- React 18.3.1 (functional components, hooks)
+- TypeScript 5.6.2 (strict mode)
+- Vite 6.0.1 (build tool, dev server)
+
+**State Management**:
+
+- @tanstack/react-query 5.62.8 (server state)
+- Zustand 5.0.2 (UI state)
+
+**UI Framework**:
+
+- Tailwind CSS 3.4.15 (utility-first CSS)
+- shadcn/ui (Radix UI primitives + Tailwind)
+- lucide-react 0.469.0 (icons)
+
+**Routing**:
+
+- react-router-dom 7.0.2
+
+**Testing**:
+
+- Vitest (Vite-native test runner)
+- @testing-library/react (component testing)
+- MSW (API mocking)
+
+### Vite Proxy Configuration (Planned)
+
+```typescript
+// vite.config.ts
+export default defineConfig({
+  server: {
+    port: 3000,
+    proxy: {
+      "/api": {
+        target: "http://localhost:5000", // Flask backend
+        changeOrigin: true,
+      },
+    },
+  },
+});
+```
+
+This allows React dev server (port 3000) to proxy all `/api/*` requests to Flask (port 5000), enabling seamless development without CORS issues.
+
+### Migration Benefits
+
+1. **Modern Developer Experience**
+
+   - Hot module replacement (instant updates)
+   - TypeScript intellisense and type checking
+   - Component-based architecture (easier to reason about)
+
+2. **Improved User Experience**
+
+   - Faster page transitions (no full page reloads)
+   - Optimistic updates (immediate UI feedback)
+   - Better error handling and loading states
+   - More responsive UI
+
+3. **Better Maintainability**
+
+   - Type safety catches bugs at compile time
+   - Component reusability (DRY principle)
+   - Clear separation of concerns (SOLID principles)
+   - Easier testing with modern tools
+
+4. **No Backend Changes**
+   - Flask API remains unchanged (zero risk)
+   - Can deploy new frontend independently
+   - Easy rollback if needed
+
+### Implementation Approach
+
+**Phase-by-phase approach** (20-30 hours total):
+
+1. Project Setup (2-3 hours)
+2. Type Definitions & API Layer (2-3 hours)
+3. Utilities & Hooks (3-4 hours)
+4. Layout & Shared Components (3-4 hours)
+5. Dashboard Features (4-6 hours)
+6. Additional Pages (3-4 hours)
+7. Polish & Enhancements (2-3 hours)
+8. Testing (3-4 hours)
+9. Documentation (1-2 hours)
+10. Final Validation (2-3 hours)
+
+Each phase builds on the previous one with validation checkpoints to ensure stability before proceeding.
+
+**Status**: Implementation plan 100% complete, ready for execution when prioritized
+
+---
+
 ## Security Considerations
 
 ### API Key Management

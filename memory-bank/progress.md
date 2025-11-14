@@ -121,6 +121,110 @@
 - [ ] Deploy to production environment (paper trading)
 - [ ] Begin 2-week paper trading validation
 
+### Phase 11: React Dashboard Migration - 0% Complete ❌ (Future Enhancement)
+
+**Goal**: Migrate Flask-templated dashboard to modern React + TypeScript + shadcn/ui frontend
+
+**Scope**: Frontend-only migration (Flask API backend remains unchanged)
+
+**Documentation**: Complete implementation plan at `implementation_plan.md` ✅
+
+**Planning Complete** ✅
+
+- [x] Implementation plan document created (100% complete)
+- [x] All sections documented: Overview, Types, Files, Functions, Classes, Dependencies, Testing, Implementation Order
+- [x] 10 phases with 50+ detailed steps for execution
+- [x] Estimated timeline: 20-30 hours total
+
+**Phase 1: Project Setup & Configuration** ❌
+
+- [ ] Create Vite React TypeScript project
+- [ ] Configure Tailwind CSS
+- [ ] Initialize shadcn/ui
+- [ ] Configure Vite proxy for Flask API
+- [ ] Install core dependencies (React Query, Zustand, etc.)
+- [ ] Install shadcn/ui components
+- [ ] Set up TypeScript strict mode
+
+**Phase 2: Type Definitions & API Layer** ❌
+
+- [ ] Create TypeScript type definitions matching Flask API
+- [ ] Implement base API client with error handling
+- [ ] Create API modules (portfolio, trading, signals, bot)
+- [ ] Test API connection with Flask backend
+- [ ] Set up React Query configuration
+
+**Phase 3: Utilities & Custom Hooks** ❌
+
+- [ ] Create formatting utilities (currency, percent, date, number)
+- [ ] Implement custom React hooks (usePortfolio, useSignals, useTrades, useBotControl)
+- [ ] Set up Zustand store for UI state
+
+**Phase 4: Layout & Shared Components** ❌
+
+- [ ] Create layout components (AppLayout, Navbar)
+- [ ] Build shared components (LoadingSpinner, ErrorMessage, EmptyState, ConfirmDialog)
+- [ ] Set up React Router with routes
+- [ ] Configure React Query Provider
+
+**Phase 5: Dashboard Feature Components** ❌
+
+- [ ] Build PortfolioSummary component
+- [ ] Build RiskMetrics component
+- [ ] Build PositionsTable component
+- [ ] Build PendingSignalsTable component
+- [ ] Build PendingOrdersTable component
+- [ ] Build PerformanceCards component
+- [ ] Build BotControls component
+- [ ] Compose DashboardPage
+
+**Phase 6: Additional Pages** ❌
+
+- [ ] Build TradesPage (trade history with filters)
+- [ ] Build SignalsPage (signal history with outcomes)
+- [ ] Build SettingsPage (bot configuration)
+- [ ] Build PlaceOrderModal (manual order entry)
+
+**Phase 7: Polish & Enhancements** ❌
+
+- [ ] Add toast notifications
+- [ ] Implement error boundaries
+- [ ] Add loading skeletons
+- [ ] Implement dark mode (optional)
+- [ ] Optimize re-renders
+- [ ] Add keyboard shortcuts (optional)
+
+**Phase 8: Testing** ❌
+
+- [ ] Install testing dependencies (Vitest, React Testing Library, MSW)
+- [ ] Set up test configuration
+- [ ] Create MSW mocks for API
+- [ ] Write unit tests (formatting utilities)
+- [ ] Write hook tests (usePortfolio, useSignals)
+- [ ] Write component tests (BotControls, PortfolioSummary, PositionsTable)
+- [ ] Write integration tests (signal approval flow, dashboard flow)
+- [ ] Run full test suite with coverage
+
+**Phase 9: Documentation & Deployment** ❌
+
+- [ ] Create dashboard/README.md
+- [ ] Add JSDoc comments to complex functions
+- [ ] Build production bundle
+- [ ] Test production build
+- [ ] Update root README.md
+
+**Phase 10: Final Validation** ❌
+
+- [ ] Verify all 18 Flask endpoints integrated
+- [ ] Check feature parity with original dashboard
+- [ ] Cross-browser testing (Chrome, Firefox, Safari, Edge)
+- [ ] Responsive design check (desktop, laptop, tablet, mobile)
+- [ ] Accessibility audit (Lighthouse score >90)
+- [ ] Performance audit (Lighthouse score >85)
+- [ ] End-to-end manual testing
+
+**Status**: Implementation plan complete, ready for execution when prioritized
+
 ## Recent Changes Summary
 
 ### Session 15: DRY/SOLID Refactoring - ALL PHASES COMPLETE (November 13, 2025) ✅
