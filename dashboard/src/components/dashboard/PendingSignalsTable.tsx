@@ -60,7 +60,7 @@ export function PendingSignalsTable() {
     );
   }
 
-  if (!signals || signals.length === 0) {
+  if (!signals || !Array.isArray(signals) || signals.length === 0) {
     return (
       <Card>
         <CardHeader>

@@ -58,5 +58,8 @@ export interface TradeFilters {
   symbol?: string;
   days?: number;
   status?: string;
+  side?: string;
+  startDate?: string;
+  endDate?: string;
   include_archived?: boolean;
 }
