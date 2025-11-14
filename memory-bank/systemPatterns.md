@@ -287,6 +287,172 @@ execute_if confidence > 0.70 (manual) or > 0.80 (auto)
 
 ## Design Patterns
 
+### Orchestrator Architecture Pattern (Session 14 Refactoring)
+
+**Use Case**: Split monolithic orchestrator into specialized components with single responsibilities
+
+**The Problem**: 1,030-line TradingBot class handled too many concerns:
+
+- Configuration and initialization
+- Task scheduling
+- Trading workflow
+- Position monitoring
+- Risk monitoring
+- Market close handling
+
+**The Solution**: Coordinator + Orchestrator pattern with clean separation
+
+```
+BotCoordinator (coordinator.py) - Wires components together
+├── BotLifecycle (lifecycle.py) - Handles initialization
+├── TaskScheduler (scheduler.py) - Manages scheduled tasks
+└── Orchestrators (specialized workflow execution):
+    ├── TradingCycleOrchestrator - Trading workflow
+    ├── PositionMonitorOrchestrator - Position monitoring
+    ├── RiskMonitorOrchestrator - Risk limits
+    └── MarketCloseHandler - EOD operations
+```
+
+**Component Responsibilities**:
+
+1. **BotCoordinator** (280 lines)
+
+   - Wires all components together
+   - Provides unified public API
+   - Delegates to specialized orchestrators
+   - Property accessors for dashboard compatibility
+
+2. **BotLifecycle** (450 lines)
+
+   - Loads configuration from config.yaml and .env
+   - Creates all module instances with dependency injection
+   - Verifies API connections
+   - Syncs database with broker reality
+   - Does NOT handle orchestration or scheduling
+
+3. **TaskScheduler** (150 lines)
+
+   - Wraps APScheduler
+   - Configures job schedules (cron, interval)
+   - Start/stop/pause/resume operations
+   - Does NOT contain business logic
+
+4. **TradingCycleOrchestrator** (280 lines)
+
+   - Executes Data → Features → Prediction → Signal → Execution workflow
+   - Processes each symbol through complete pipeline
+   - Handles signal approval queue
+   - Does NOT handle position monitoring or risk checking
+
+5. **PositionMonitorOrchestrator** (120 lines)
+
+   - Syncs positions with broker
+   - Updates prices every 30 seconds
+   - Checks and executes stop losses
+   - Does NOT handle trading cycle or risk limits
+
+6. **RiskMonitorOrchestrator** (100 lines)
+
+   - Checks daily loss limits
+   - Monitors position counts and exposure
+   - Activates circuit breaker when needed
+   - Does NOT handle trading or positions
+
+7. **MarketCloseHandler** (80 lines)
+   - Closes positions at EOD (if configured)
+   - Calculates daily performance
+   - Saves metrics and resets counters
+   - Does NOT handle trading or monitoring
+
+**Benefits**:
+
+- **Single Responsibility**: Each class has ONE clear purpose
+- **Testability**: Mock one orchestrator without affecting others
+- **Maintainability**: Find code by workflow type easily (~100-200 lines per file)
+- **Extensibility**: Add new workflows without touching existing ones
+- **Clarity**: No more 1,030-line files, each component understandable
+
+**Example - How Trading Cycle Works**:
+
+```python
+# Old way (monolithic):
+class TradingBot:
+    def run_trading_cycle(self):
+        # 200+ lines of mixed logic
+        # Initialization checks
+        # Market hours check
+        # Data fetching
+        # Feature calculation
+        # ML prediction
+        # Signal generation
+        # Risk validation
+        # Execution logic
+        # Database updates
+
+# New way (orchestrated):
+class BotCoordinator:
+    def _run_trading_cycle_with_checks(self):
+        if not self.is_running or not self.is_market_hours():
+            return
+        self.trading_cycle.run()  # Delegate to orchestrator
+        risk_ok = self.risk_monitor.check_risk_limits()  # Separate concern
+        if not risk_ok:
+            self.stop()
+
+class TradingCycleOrchestrator:
+    def run(self):
+        for symbol in self.config.symbols:
+            self._process_symbol(symbol)  # Focus on workflow only
+```
+
+**Dependency Injection Pattern**:
+
+```python
+# Lifecycle creates all modules
+modules = lifecycle.get_modules()  # Dict of module instances
+config = lifecycle.config
+db = lifecycle.db_manager
+
+# Inject into orchestrators (no hardcoded dependencies)
+trading_cycle = TradingCycleOrchestrator(modules, config, db)
+position_monitor = PositionMonitorOrchestrator(modules, config, db)
+risk_monitor = RiskMonitorOrchestrator(modules['portfolio_monitor'], config, db)
+```
+
+**Why This Matters**:
+
+- Testing: Can inject mocks for any module
+- Flexibility: Swap implementations without changing orchestrators
+- Clarity: Dependencies explicit in constructor
+- SOLID: Follows Dependency Inversion Principle
+
+**File Organization**:
+
+```
+src/
+├── bot/                    # Bot coordination package
+│   ├── __init__.py
+│   ├── coordinator.py     # Main coordinator
+│   ├── lifecycle.py       # Initialization & configuration
+│   └── scheduler.py       # Task scheduling
+│
+├── orchestrators/          # Workflow orchestrators
+│   ├── __init__.py
+│   ├── trading_cycle.py   # Trading workflow
+│   ├── position_monitor.py # Position monitoring
+│   ├── risk_monitor.py    # Risk monitoring
+│   └── market_close.py    # EOD operations
+│
+└── main.py (60 lines)     # Simple entry point
+```
+
+**Impact**:
+
+- Reduced main.py from 1,030 lines to 60 lines
+- Created 8 specialized components (avg 180 lines each)
+- Zero functionality lost
+- Dramatically improved code quality
+
 ### New Patterns (Session 10 Refactoring)
 
 #### Decorator Pattern - Error Handling
