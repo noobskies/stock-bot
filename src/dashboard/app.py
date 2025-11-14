@@ -21,10 +21,13 @@ from pathlib import Path
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.main import TradingBot
+from src.bot.coordinator import BotCoordinator
 from src.database.db_manager import DatabaseManager
 from src.bot_types.trading_types import TradingMode, SignalType
 from loguru import logger
+
+# Backward compatibility alias
+TradingBot = BotCoordinator
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -35,10 +38,10 @@ CORS(app)
 db_manager = DatabaseManager()
 
 
-def get_bot_instance() -> TradingBot:
-    """Get the singleton TradingBot instance."""
+def get_bot_instance() -> BotCoordinator:
+    """Get the singleton BotCoordinator instance."""
     try:
-        return TradingBot()
+        return BotCoordinator()
     except Exception as e:
         logger.error(f"Failed to get bot instance: {e}")
         return None
