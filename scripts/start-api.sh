@@ -3,6 +3,8 @@
 # This starts the REST API server that the React dashboard connects to
 
 set -e  # Exit on error
+# Change to project root directory
+cd "$(dirname "$0")/.."
 
 echo "🔌 Starting Flask API Backend..."
 

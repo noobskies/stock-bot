@@ -2,19 +2,24 @@
 # Start All Components
 # This provides instructions and commands to start the bot, API, and dashboard
 
+# Store script directory for calling other scripts
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
 echo "🚀 Stock Trading Bot - Complete Startup"
+# Change to project root directory
+cd "$(dirname "$0")/.."
 echo "========================================"
 echo ""
 echo "To run the complete system, you need 3 separate terminal windows/tabs:"
 echo ""
 echo "Terminal 1 - Flask API Backend (required for dashboard):"
-echo "  ./start-api.sh"
+echo "  cd scripts && ./start-api.sh"
 echo ""
 echo "Terminal 2 - React Dashboard (web interface):"
-echo "  ./start-dashboard.sh"
+echo "  cd scripts && ./start-dashboard.sh"
 echo ""
 echo "Terminal 3 - Trading Bot (optional - for actual trading):"
-echo "  ./start-bot.sh"
+echo "  cd scripts && ./start-bot.sh"
 echo ""
 echo "========================================"
 echo ""
@@ -33,5 +38,5 @@ echo ""
 read -p "Start Flask API in this terminal? (y/n): " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    ./start-api.sh
+    "$SCRIPT_DIR/start-api.sh"
 fi

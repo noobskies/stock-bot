@@ -3,6 +3,8 @@
 # This starts the modern React dashboard on port 3000
 
 set -e  # Exit on error
+# Change to project root directory
+cd "$(dirname "$0")/.."
 
 echo "📊 Starting React Dashboard..."
 

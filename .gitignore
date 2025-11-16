@@ -68,6 +68,9 @@ Thumbs.db
 .coverage
 htmlcov/
 .tox/
+coverage.xml
+*.cover
+.hypothesis/
 
 # Backups
 *.bak
